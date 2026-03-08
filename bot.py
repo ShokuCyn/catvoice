@@ -124,9 +124,6 @@ class Speaker(threading.Thread):
         self._stop_sentinel = object()
         self.queue: queue.Queue[object] = queue.Queue()
         self._stop = threading.Event()
-        self.local_engine = pyttsx3.init()
-        self.local_engine.setProperty("rate", 195)
-        self.local_engine.setProperty("volume", 1.0)
 
     def run(self) -> None:
         while not self._stop.is_set():
@@ -197,8 +194,12 @@ class Speaker(threading.Thread):
 
     def _speak_local_fallback(self, text: str) -> None:
         try:
-            self.local_engine.say(text)
-            self.local_engine.runAndWait()
+            engine = pyttsx3.init()
+            engine.setProperty("rate", 195)
+            engine.setProperty("volume", 1.0)
+            engine.say(text)
+            engine.runAndWait()
+            engine.stop()
         except Exception as exc:  # noqa: BLE001
             print(f"[local tts fallback error] {exc}")
 
