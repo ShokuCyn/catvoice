@@ -29,7 +29,7 @@ class Settings:
     streamlabs_tts_url: str = "https://streamlabs.com/polly/speak"
     streamlabs_voice: str = "Joanna"
     streamlabs_tts_timeout_seconds: int = 30
-    streamelements_tts_url: str = "https://api.streamelements.com/kappa/v2/speech"
+    streamelements_tts_url: str = ""
     streamelements_voice: str = "Joanna"
     bot_prefix: str = "!"
 
@@ -76,18 +76,13 @@ class Settings:
             streamlabs_tts_url=os.getenv("STREAMLABS_TTS_URL", "https://streamlabs.com/polly/speak"),
             streamlabs_voice=os.getenv("STREAMLABS_VOICE", "Joanna"),
             streamlabs_tts_timeout_seconds=tts_timeout_seconds,
-            streamelements_tts_url=os.getenv(
-                "STREAMELEMENTS_TTS_URL",
-                "https://api.streamelements.com/kappa/v2/speech",
-            ),
+            streamelements_tts_url=os.getenv("STREAMELEMENTS_TTS_URL", "").strip(),
             streamelements_voice=os.getenv("STREAMELEMENTS_VOICE", "Joanna"),
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
 
 class VoiceListener(threading.Thread):
-    """Background microphone listener that pushes transcribed text into a queue."""
-
     def __init__(self, out_queue: queue.Queue[str]) -> None:
         super().__init__(daemon=True)
         self.out_queue = out_queue
@@ -118,8 +113,6 @@ class VoiceListener(threading.Thread):
 
 
 class Speaker(threading.Thread):
-    """Single-threaded TTS worker to avoid overlapping audio playback."""
-
     def __init__(self, settings: Settings) -> None:
         super().__init__(daemon=True)
         self.settings = settings
@@ -148,7 +141,10 @@ class Speaker(threading.Thread):
         try:
             audio_bytes = self._fetch_streamlabs_audio(safe_text)
         except requests.RequestException as exc:
-            print(f"[streamlabs tts error] {exc}; falling back to StreamElements")
+            if not self.settings.streamelements_tts_url:
+                print(f"[streamlabs tts error] {exc}")
+                return
+            print(f"[streamlabs tts error] {exc}; trying StreamElements fallback")
             try:
                 audio_bytes = self._fetch_streamelements_audio(safe_text)
             except requests.RequestException as fallback_exc:
@@ -159,14 +155,12 @@ class Speaker(threading.Thread):
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as audio_file:
                 audio_file.write(audio_bytes)
                 temp_path = Path(audio_file.name)
-
             try:
                 playsound(str(temp_path), block=True)
             finally:
                 temp_path.unlink(missing_ok=True)
-
         except Exception as exc:  # noqa: BLE001
-            print(f"[streamlabs tts playback error] {exc}")
+            print(f"[tts playback error] {exc}")
 
     def _normalize_tts_text(self, text: str) -> str:
         cleaned = text.replace("*", "")
@@ -176,7 +170,7 @@ class Speaker(threading.Thread):
     def _fetch_streamlabs_audio(self, text: str) -> bytes:
         headers = {
             "User-Agent": "Mozilla/5.0",
-            "Accept": "application/json",
+            "Accept": "application/json,audio/mpeg,*/*",
             "Referer": "https://streamlabs.com/",
         }
         response = requests.get(
@@ -186,7 +180,23 @@ class Speaker(threading.Thread):
             timeout=self.settings.streamlabs_tts_timeout_seconds,
         )
         response.raise_for_status()
-        data = response.json()
+
+        content_type = response.headers.get("content-type", "").lower()
+        if content_type.startswith("audio/"):
+            return response.content
+
+        body = response.text.strip()
+        if body.startswith("http://") or body.startswith("https://"):
+            audio_response = requests.get(body, timeout=self.settings.streamlabs_tts_timeout_seconds)
+            audio_response.raise_for_status()
+            return audio_response.content
+
+        try:
+            data = response.json()
+        except ValueError as exc:
+            snippet = body[:140].replace("\n", " ")
+            raise requests.RequestException(f"Streamlabs returned non-JSON response: {snippet}") from exc
+
         speak_url = data.get("speak_url")
         if not speak_url:
             raise requests.RequestException(f"unexpected Streamlabs response: {data}")
@@ -231,15 +241,12 @@ class CatVoiceBot(commands.Bot):
     async def event_message(self, message) -> None:
         if message.echo:
             return
-
         if message.content:
             await self.chat_queue.put((message.author.name, message.content))
-
         await self.handle_commands(message)
 
     async def response_loop(self) -> None:
         next_chat_reply_time = 0.0
-
         while True:
             try:
                 mic_text = self.voice_queue.get_nowait()
@@ -250,7 +257,6 @@ class CatVoiceBot(commands.Bot):
                 if mic_text.startswith("[voice error]"):
                     print(mic_text)
                     continue
-
                 print(f"Mic heard: {mic_text}")
                 reply = await self.generate_reply(f"Streamer voice input: {mic_text}")
                 channel = self.get_channel(self.settings.twitch_channel)
@@ -266,9 +272,7 @@ class CatVoiceBot(commands.Bot):
                 except asyncio.QueueEmpty:
                     await asyncio.sleep(0.1)
                     continue
-
-                prompt = f"Twitch chat from {author}: {content}"
-                reply = await self.generate_reply(prompt)
+                reply = await self.generate_reply(f"Twitch chat from {author}: {content}")
                 channel = self.get_channel(self.settings.twitch_channel)
                 if channel:
                     await channel.send(reply[:450])
@@ -310,10 +314,7 @@ class CatVoiceBot(commands.Bot):
             return text or "Meow?"
         except requests.ReadTimeout:
             print("[ollama error] request timed out while waiting for model response")
-            return (
-                "Mrrp... that model is taking too long. "
-                "Try increasing OLLAMA_TIMEOUT_SECONDS or using a smaller model."
-            )
+            return "Mrrp... that model is taking too long. Try increasing OLLAMA_TIMEOUT_SECONDS or using a smaller model."
         except requests.RequestException as exc:
             print(f"[ollama error] {exc}")
             return "I couldn't reach Ollama. Is it running?"

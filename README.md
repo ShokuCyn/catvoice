@@ -6,7 +6,7 @@ This app can:
 - Prioritize your microphone when generating responses
 - Reply to Twitch chat on a cooldown so it does not answer every single message
 - Generate playful cat-like responses with a **free local AI model** (Ollama)
-- Speak replies out loud using Streamlabs TTS (girl voice), with StreamElements fallback if Streamlabs blocks a request
+- Speak replies out loud using Streamlabs TTS (girl voice)
 
 ---
 
@@ -96,8 +96,8 @@ Set these in Notepad:
 - `STREAMLABS_TTS_URL=https://streamlabs.com/polly/speak`
 - `STREAMLABS_VOICE=Joanna` (girl voice)
 - `STREAMLABS_TTS_TIMEOUT_SECONDS=30`
-- `STREAMELEMENTS_TTS_URL=https://api.streamelements.com/kappa/v2/speech`
-- `STREAMELEMENTS_VOICE=Joanna`
+- `STREAMELEMENTS_TTS_URL=` (optional fallback endpoint; leave blank to disable fallback)
+- `STREAMELEMENTS_VOICE=Joanna` (used only if fallback URL is set)
 
 Save and close Notepad.
 
@@ -159,6 +159,8 @@ ollama list
 - Check internet connection (Streamlabs TTS is a web API).
 - Try increasing `STREAMLABS_TTS_TIMEOUT_SECONDS` in `.env`.
 - Try a different `STREAMLABS_VOICE` if one voice fails.
+- If Streamlabs returns a non-JSON error/HTML page, the bot now handles that safely instead of crashing the TTS step.
+- StreamElements fallback is optional; some endpoints return 401, so keep `STREAMELEMENTS_TTS_URL` blank unless you have a working endpoint.
 
 ### Microphone not detected
 - Windows Settings → Privacy & security → Microphone.
