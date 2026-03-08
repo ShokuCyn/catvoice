@@ -6,6 +6,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+import pyttsx3
 import requests
 import speech_recognition as sr
 from dotenv import load_dotenv
@@ -118,6 +119,9 @@ class Speaker(threading.Thread):
         self.settings = settings
         self.queue: queue.Queue[str] = queue.Queue()
         self._stop = threading.Event()
+        self.local_engine = pyttsx3.init()
+        self.local_engine.setProperty("rate", 195)
+        self.local_engine.setProperty("volume", 1.0)
 
     def run(self) -> None:
         while not self._stop.is_set():
@@ -142,13 +146,15 @@ class Speaker(threading.Thread):
             audio_bytes = self._fetch_streamlabs_audio(safe_text)
         except requests.RequestException as exc:
             if not self.settings.streamelements_tts_url:
-                print(f"[streamlabs tts error] {exc}")
+                print(f"[streamlabs tts error] {exc}; using local fallback voice")
+                self._speak_local_fallback(safe_text)
                 return
             print(f"[streamlabs tts error] {exc}; trying StreamElements fallback")
             try:
                 audio_bytes = self._fetch_streamelements_audio(safe_text)
             except requests.RequestException as fallback_exc:
-                print(f"[streamelements tts error] {fallback_exc}")
+                print(f"[streamelements tts error] {fallback_exc}; using local fallback voice")
+                self._speak_local_fallback(safe_text)
                 return
 
         try:
@@ -160,12 +166,20 @@ class Speaker(threading.Thread):
             finally:
                 temp_path.unlink(missing_ok=True)
         except Exception as exc:  # noqa: BLE001
-            print(f"[tts playback error] {exc}")
+            print(f"[tts playback error] {exc}; using local fallback voice")
+            self._speak_local_fallback(safe_text)
 
     def _normalize_tts_text(self, text: str) -> str:
         cleaned = text.replace("*", "")
         cleaned = " ".join(cleaned.split())
         return cleaned[:280]
+
+    def _speak_local_fallback(self, text: str) -> None:
+        try:
+            self.local_engine.say(text)
+            self.local_engine.runAndWait()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[local tts fallback error] {exc}")
 
     def _fetch_streamlabs_audio(self, text: str) -> bytes:
         headers = {
