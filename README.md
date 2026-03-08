@@ -3,8 +3,8 @@
 This app can:
 - Read Twitch chat
 - Listen to your microphone
-- Generate responses with a **free local AI model** (Ollama)
-- Speak replies out loud on your PC
+- Generate playful cat-like responses with a **free local AI model** (Ollama)
+- Speak replies out loud on your PC with a cuter/faster voice profile
 
 ---
 
@@ -48,7 +48,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ## Step 3) Install and prepare Ollama
 
 ```powershell
-ollama pull llama3.2:3b
+ollama pull gpt-oss:20b
 ```
 
 Keep Ollama running while using the bot.
@@ -88,7 +88,7 @@ Set these in Notepad:
 - `TWITCH_NICK=...`
 - `TWITCH_CHANNEL=...`
 - Keep `OLLAMA_BASE_URL=http://127.0.0.1:11434`
-- Keep or change `OLLAMA_MODEL=llama3.2:3b`
+- Keep or change `OLLAMA_MODEL=gpt-oss:20b`
 
 Save and close Notepad.
 

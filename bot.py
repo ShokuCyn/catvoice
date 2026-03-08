@@ -20,7 +20,7 @@ class Settings:
     twitch_client_id: str
     twitch_nick: str
     twitch_channel: str
-    ollama_model: str = "llama3.2:3b"
+    ollama_model: str = "gpt-oss:20b"
     ollama_base_url: str = "http://127.0.0.1:11434"
     bot_prefix: str = "!"
 
@@ -41,7 +41,7 @@ class Settings:
             twitch_client_id=required["TWITCH_CLIENT_ID"],
             twitch_nick=required["TWITCH_NICK"],
             twitch_channel=required["TWITCH_CHANNEL"],
-            ollama_model=os.getenv("OLLAMA_MODEL", "llama3.2:3b"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "gpt-oss:20b"),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
@@ -82,11 +82,31 @@ class VoiceListener(threading.Thread):
 class Speaker:
     def __init__(self) -> None:
         self.engine = pyttsx3.init()
-        self.engine.setProperty("rate", 185)
+        self._lock = threading.Lock()
+        self.engine.setProperty("rate", 195)
+        self.engine.setProperty("volume", 1.0)
+        self._set_cuter_voice()
+
+    def _set_cuter_voice(self) -> None:
+        voices = self.engine.getProperty("voices")
+        preferred_keywords = ("zira", "female", "susan", "hazel", "aria")
+
+        for voice in voices:
+            descriptor = f"{voice.name} {voice.id}".lower()
+            if any(keyword in descriptor for keyword in preferred_keywords):
+                self.engine.setProperty("voice", voice.id)
+                break
+
+        try:
+            self.engine.setProperty("pitch", 65)
+        except Exception:
+            # Some pyttsx3 drivers (including some Windows setups) do not support pitch.
+            pass
 
     def speak(self, text: str) -> None:
-        self.engine.say(text)
-        self.engine.runAndWait()
+        with self._lock:
+            self.engine.say(text)
+            self.engine.runAndWait()
 
 
 class CatVoiceBot(commands.Bot):
@@ -141,7 +161,12 @@ class CatVoiceBot(commands.Bot):
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are CatVoice, a friendly live-stream co-host. Keep replies concise, fun, and safe for Twitch.",
+                    "content": (
+                        "You are CatVoice, a playful cat VTuber co-host. "
+                        "Keep replies concise, Twitch-safe, and cat-like. "
+                        "Use occasional cat words like meow, purr, paws, or hiss naturally, "
+                        "without overdoing it."
+                    ),
                 },
                 {"role": "user", "content": content},
             ],
