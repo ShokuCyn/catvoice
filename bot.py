@@ -117,7 +117,8 @@ class Speaker(threading.Thread):
     def __init__(self, settings: Settings) -> None:
         super().__init__(daemon=True)
         self.settings = settings
-        self.queue: queue.Queue[str] = queue.Queue()
+        self._stop_sentinel = object()
+        self.queue: queue.Queue[object] = queue.Queue()
         self._stop = threading.Event()
         self.local_engine = pyttsx3.init()
         self.local_engine.setProperty("rate", 195)
@@ -125,17 +126,24 @@ class Speaker(threading.Thread):
 
     def run(self) -> None:
         while not self._stop.is_set():
-            text = self.queue.get()
-            if text == "__STOP__":
+            item = self.queue.get()
+            if item is self._stop_sentinel:
                 break
-            self._speak_streamlabs(text)
+            if not isinstance(item, str):
+                continue
+
+            try:
+                self._speak_streamlabs(item)
+            except Exception as exc:  # noqa: BLE001
+                # Never let the speaker worker die; keep consuming queue items.
+                print(f"[speaker worker error] {exc}")
 
     def speak(self, text: str) -> None:
         self.queue.put(text)
 
     def stop(self) -> None:
         self._stop.set()
-        self.queue.put("__STOP__")
+        self.queue.put(self._stop_sentinel)
 
     def _speak_streamlabs(self, text: str) -> None:
         safe_text = self._normalize_tts_text(text)
@@ -244,6 +252,12 @@ class CatVoiceBot(commands.Bot):
         self.voice_listener = VoiceListener(self.voice_queue)
         self.speaker = Speaker(settings)
 
+    def _ensure_speaker_running(self) -> None:
+        if not self.speaker.is_alive():
+            print("[speaker] worker stopped unexpectedly; restarting")
+            self.speaker = Speaker(self.settings)
+            self.speaker.start()
+
     async def event_ready(self) -> None:
         print(f"Logged in as: {self.nick}")
         print(f"Listening in: #{self.settings.twitch_channel}")
@@ -276,6 +290,7 @@ class CatVoiceBot(commands.Bot):
                 channel = self.get_channel(self.settings.twitch_channel)
                 if channel:
                     await channel.send(f"🎙️ {reply[:430]}")
+                self._ensure_speaker_running()
                 self.speaker.speak(reply)
                 continue
 
@@ -290,6 +305,7 @@ class CatVoiceBot(commands.Bot):
                 channel = self.get_channel(self.settings.twitch_channel)
                 if channel:
                     await channel.send(reply[:450])
+                self._ensure_speaker_running()
                 self.speaker.speak(reply)
                 next_chat_reply_time = now + self.settings.chat_response_cooldown_seconds
                 continue
