@@ -1,13 +1,15 @@
 import asyncio
 import os
 import queue
+import tempfile
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 
-import pyttsx3
 import requests
 import speech_recognition as sr
 from dotenv import load_dotenv
+from playsound import playsound
 from twitchio.ext import commands
 
 
@@ -24,6 +26,9 @@ class Settings:
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_timeout_seconds: int = 120
     chat_response_cooldown_seconds: int = 20
+    streamlabs_tts_url: str = "https://streamlabs.com/polly/speak"
+    streamlabs_voice: str = "Joanna"
+    streamlabs_tts_timeout_seconds: int = 30
     bot_prefix: str = "!"
 
     @staticmethod
@@ -40,6 +45,7 @@ class Settings:
 
         timeout_raw = os.getenv("OLLAMA_TIMEOUT_SECONDS", "120")
         cooldown_raw = os.getenv("CHAT_RESPONSE_COOLDOWN_SECONDS", "20")
+        tts_timeout_raw = os.getenv("STREAMLABS_TTS_TIMEOUT_SECONDS", "30")
 
         try:
             timeout_seconds = max(15, int(timeout_raw))
@@ -51,6 +57,11 @@ class Settings:
         except ValueError:
             cooldown_seconds = 20
 
+        try:
+            tts_timeout_seconds = max(5, int(tts_timeout_raw))
+        except ValueError:
+            tts_timeout_seconds = 30
+
         return Settings(
             twitch_token=required["TWITCH_TOKEN"],
             twitch_client_id=required["TWITCH_CLIENT_ID"],
@@ -60,6 +71,9 @@ class Settings:
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             ollama_timeout_seconds=timeout_seconds,
             chat_response_cooldown_seconds=cooldown_seconds,
+            streamlabs_tts_url=os.getenv("STREAMLABS_TTS_URL", "https://streamlabs.com/polly/speak"),
+            streamlabs_voice=os.getenv("STREAMLABS_VOICE", "Joanna"),
+            streamlabs_tts_timeout_seconds=tts_timeout_seconds,
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -97,34 +111,20 @@ class VoiceListener(threading.Thread):
 
 
 class Speaker(threading.Thread):
-    """Single-threaded TTS worker to avoid pyttsx3 run loop conflicts."""
+    """Single-threaded TTS worker to avoid overlapping audio playback."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: Settings) -> None:
         super().__init__(daemon=True)
+        self.settings = settings
         self.queue: queue.Queue[str] = queue.Queue()
         self._stop = threading.Event()
-        self.engine = pyttsx3.init()
-        self.engine.setProperty("rate", 195)
-        self.engine.setProperty("volume", 1.0)
-        self._set_cuter_voice()
-
-    def _set_cuter_voice(self) -> None:
-        voices = self.engine.getProperty("voices")
-        preferred_keywords = ("zira", "female", "susan", "hazel", "aria")
-
-        for voice in voices:
-            descriptor = f"{voice.name} {voice.id}".lower()
-            if any(keyword in descriptor for keyword in preferred_keywords):
-                self.engine.setProperty("voice", voice.id)
-                break
 
     def run(self) -> None:
         while not self._stop.is_set():
             text = self.queue.get()
             if text == "__STOP__":
                 break
-            self.engine.say(text)
-            self.engine.runAndWait()
+            self._speak_streamlabs(text)
 
     def speak(self, text: str) -> None:
         self.queue.put(text)
@@ -132,6 +132,37 @@ class Speaker(threading.Thread):
     def stop(self) -> None:
         self._stop.set()
         self.queue.put("__STOP__")
+
+    def _speak_streamlabs(self, text: str) -> None:
+        try:
+            response = requests.get(
+                self.settings.streamlabs_tts_url,
+                params={"voice": self.settings.streamlabs_voice, "text": text},
+                timeout=self.settings.streamlabs_tts_timeout_seconds,
+            )
+            response.raise_for_status()
+            data = response.json()
+            speak_url = data.get("speak_url")
+            if not speak_url:
+                print(f"[streamlabs tts error] unexpected response: {data}")
+                return
+
+            audio_response = requests.get(speak_url, timeout=self.settings.streamlabs_tts_timeout_seconds)
+            audio_response.raise_for_status()
+
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as audio_file:
+                audio_file.write(audio_response.content)
+                temp_path = Path(audio_file.name)
+
+            try:
+                playsound(str(temp_path), block=True)
+            finally:
+                temp_path.unlink(missing_ok=True)
+
+        except requests.RequestException as exc:
+            print(f"[streamlabs tts error] {exc}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[streamlabs tts playback error] {exc}")
 
 
 class CatVoiceBot(commands.Bot):
@@ -147,7 +178,7 @@ class CatVoiceBot(commands.Bot):
         self.voice_queue: queue.Queue[str] = queue.Queue()
         self.chat_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
         self.voice_listener = VoiceListener(self.voice_queue)
-        self.speaker = Speaker()
+        self.speaker = Speaker(settings)
 
     async def event_ready(self) -> None:
         print(f"Logged in as: {self.nick}")

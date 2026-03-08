@@ -6,7 +6,7 @@ This app can:
 - Prioritize your microphone when generating responses
 - Reply to Twitch chat on a cooldown so it does not answer every single message
 - Generate playful cat-like responses with a **free local AI model** (Ollama)
-- Speak replies out loud on your PC with a cuter/faster voice profile
+- Speak replies out loud using Streamlabs TTS (girl voice)
 
 ---
 
@@ -93,6 +93,9 @@ Set these in Notepad:
 - Keep or change `OLLAMA_MODEL=llama3.2:3b`
 - `OLLAMA_TIMEOUT_SECONDS=120` (increase this if first reply times out)
 - `CHAT_RESPONSE_COOLDOWN_SECONDS=20` (how often to reply to chat; mic still takes priority)
+- `STREAMLABS_TTS_URL=https://streamlabs.com/polly/speak`
+- `STREAMLABS_VOICE=Joanna` (girl voice)
+- `STREAMLABS_TTS_TIMEOUT_SECONDS=30`
 
 Save and close Notepad.
 
@@ -149,6 +152,11 @@ ollama list
 ### Too many chat replies / too few chat replies
 - Change `CHAT_RESPONSE_COOLDOWN_SECONDS` in `.env`.
 - Lower value = replies more often, higher value = replies less often.
+
+### Streamlabs TTS issues
+- Check internet connection (Streamlabs TTS is a web API).
+- Try increasing `STREAMLABS_TTS_TIMEOUT_SECONDS` in `.env`.
+- Try a different `STREAMLABS_VOICE` if one voice fails.
 
 ### Microphone not detected
 - Windows Settings → Privacy & security → Microphone.
