@@ -32,6 +32,7 @@ class Settings:
     streamlabs_tts_timeout_seconds: int = 30
     streamelements_tts_url: str = ""
     streamelements_voice: str = "Joanna"
+    use_web_tts: bool = False
     bot_prefix: str = "!"
 
     @staticmethod
@@ -65,6 +66,8 @@ class Settings:
         except ValueError:
             tts_timeout_seconds = 30
 
+        use_web_tts = os.getenv("USE_WEB_TTS", "false").strip().lower() in {"1", "true", "yes", "on"}
+
         return Settings(
             twitch_token=required["TWITCH_TOKEN"],
             twitch_client_id=required["TWITCH_CLIENT_ID"],
@@ -79,6 +82,7 @@ class Settings:
             streamlabs_tts_timeout_seconds=tts_timeout_seconds,
             streamelements_tts_url=os.getenv("STREAMELEMENTS_TTS_URL", "").strip(),
             streamelements_voice=os.getenv("STREAMELEMENTS_VOICE", "Joanna"),
+            use_web_tts=use_web_tts,
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -133,7 +137,7 @@ class Speaker(threading.Thread):
                 continue
 
             try:
-                self._speak_streamlabs(item)
+                self._speak(item)
             except Exception as exc:  # noqa: BLE001
                 # Never let the speaker worker die; keep consuming queue items.
                 print(f"[speaker worker error] {exc}")
@@ -144,6 +148,15 @@ class Speaker(threading.Thread):
     def stop(self) -> None:
         self._stop.set()
         self.queue.put(self._stop_sentinel)
+
+    def _speak(self, text: str) -> None:
+        if self.settings.use_web_tts:
+            self._speak_streamlabs(text)
+            return
+
+        safe_text = self._normalize_tts_text(text)
+        if safe_text:
+            self._speak_local_fallback(safe_text)
 
     def _speak_streamlabs(self, text: str) -> None:
         safe_text = self._normalize_tts_text(text)

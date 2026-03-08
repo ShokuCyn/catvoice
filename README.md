@@ -6,7 +6,7 @@ This app can:
 - Prioritize your microphone when generating responses
 - Reply to Twitch chat on a cooldown so it does not answer every single message
 - Generate playful cat-like responses with a **free local AI model** (Ollama)
-- Speak replies out loud using Streamlabs TTS (girl voice), with automatic local voice fallback if the web API fails
+- Speak replies out loud reliably with local TTS by default (optional web TTS mode available)
 
 ---
 
@@ -93,10 +93,11 @@ Set these in Notepad:
 - Keep or change `OLLAMA_MODEL=llama3.2:3b`
 - `OLLAMA_TIMEOUT_SECONDS=120` (increase this if first reply times out)
 - `CHAT_RESPONSE_COOLDOWN_SECONDS=20` (how often to reply to chat; mic still takes priority)
+- `USE_WEB_TTS=false` (recommended; most reliable, always uses local voice)
 - `STREAMLABS_TTS_URL=https://streamlabs.com/polly/speak`
-- `STREAMLABS_VOICE=Joanna` (girl voice)
+- `STREAMLABS_VOICE=Joanna` (used when `USE_WEB_TTS=true`)
 - `STREAMLABS_TTS_TIMEOUT_SECONDS=30`
-- `STREAMELEMENTS_TTS_URL=` (optional fallback endpoint; leave blank to disable fallback)
+- `STREAMELEMENTS_TTS_URL=` (optional fallback endpoint if `USE_WEB_TTS=true`)
 - `STREAMELEMENTS_VOICE=Joanna` (used only if fallback URL is set)
 
 Save and close Notepad.
@@ -155,13 +156,10 @@ ollama list
 - Change `CHAT_RESPONSE_COOLDOWN_SECONDS` in `.env`.
 - Lower value = replies more often, higher value = replies less often.
 
-### Streamlabs TTS issues
-- Check internet connection (Streamlabs TTS is a web API).
-- Try increasing `STREAMLABS_TTS_TIMEOUT_SECONDS` in `.env`.
-- Try a different `STREAMLABS_VOICE` if one voice fails.
-- If Streamlabs returns a non-JSON error/HTML page, the bot now handles that safely instead of crashing the TTS step.
-- StreamElements fallback is optional; some endpoints return 401, so keep `STREAMELEMENTS_TTS_URL` blank unless you have a working endpoint.
-- If web TTS still fails, the bot now speaks using a local fallback voice automatically.
+### TTS only speaks once / unreliable web voice
+- Keep `USE_WEB_TTS=false` for the most reliable behavior (local TTS every message).
+- If you enable web mode, Streamlabs/StreamElements may rate-limit or block requests.
+- Increase `STREAMLABS_TTS_TIMEOUT_SECONDS` and try again.
 
 ### Microphone not detected
 - Windows Settings → Privacy & security → Microphone.
