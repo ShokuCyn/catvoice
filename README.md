@@ -1,9 +1,9 @@
-# CatVoice Twitch Bot (Windows-Friendly Guide)
+# CatVoice Twitch Bot (Windows-Friendly + Free Local AI)
 
 This is a small Python app that can act like your stream co-host. It can:
 - Read Twitch chat
 - Listen to your microphone
-- Ask an OpenAI model for a response
+- Generate responses with a **free local AI model** (Ollama)
 - Speak that response out loud on your PC
 
 If you are on **Windows** and not super technical, follow this exactly.
@@ -16,7 +16,7 @@ If you are on **Windows** and not super technical, follow this exactly.
 2. **A Twitch account** (for the bot)
 3. **Python 3.10+** installed from [python.org](https://www.python.org/downloads/windows/)
    - During install, check **"Add Python to PATH"**
-4. **An OpenAI API key**
+4. **Ollama** (free local AI runtime) from https://ollama.com/download/windows
 
 ---
 
@@ -58,7 +58,22 @@ Then run:
 
 ---
 
-## Step 3) Get your Twitch bot credentials
+## Step 3) Install and start Ollama (free chatbot API)
+
+1. Install Ollama for Windows: https://ollama.com/download/windows
+2. Open a **new** PowerShell window and run:
+
+```powershell
+ollama pull llama3.2:3b
+```
+
+That downloads a free model the bot can use.
+
+> Keep Ollama running in the background while using the bot.
+
+---
+
+## Step 4) Get your Twitch bot credentials
 
 You need values for:
 - `TWITCH_TOKEN`
@@ -82,16 +97,6 @@ Generate a **chat bot token** and copy:
 
 ---
 
-## Step 4) Get your OpenAI API key
-
-1. Go to: https://platform.openai.com/api-keys
-2. Create a new key
-3. Copy it (starts with `sk-...`)
-
-You will set this as `OPENAI_API_KEY`.
-
----
-
 ## Step 5) Set environment variables (PowerShell)
 
 In the same PowerShell window, run (replace values with yours):
@@ -101,8 +106,8 @@ $env:TWITCH_TOKEN="oauth:paste_yours_here"
 $env:TWITCH_CLIENT_ID="paste_client_id_here"
 $env:TWITCH_NICK="your_bot_username"
 $env:TWITCH_CHANNEL="your_channel_name"
-$env:OPENAI_API_KEY="sk-paste_key_here"
-$env:OPENAI_MODEL="gpt-4o-mini"
+$env:OLLAMA_BASE_URL="http://127.0.0.1:11434"
+$env:OLLAMA_MODEL="llama3.2:3b"
 ```
 
 > Important: these `$env:` values only last for the current terminal window.
@@ -126,6 +131,7 @@ When you come back later:
 ```powershell
 cd path\to\catvoice
 .\.venv\Scripts\Activate.ps1
+# make sure Ollama is running
 # set env vars again (or use a .env loader in your own workflow)
 python bot.py
 ```
@@ -137,6 +143,20 @@ python bot.py
 ### "python is not recognized"
 - Reinstall Python and check **"Add Python to PATH"** during setup.
 - Reopen PowerShell after install.
+
+### "ollama is not recognized"
+- Restart PowerShell after installing Ollama.
+- If still broken, restart Windows once and try again.
+
+### "I couldn't reach Ollama. Is it running?"
+- Start Ollama app on Windows.
+- Test in PowerShell:
+
+```powershell
+ollama list
+```
+
+If that works, run the bot again.
 
 ### Microphone not detected
 - Check Windows Privacy settings:

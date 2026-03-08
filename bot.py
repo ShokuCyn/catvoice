@@ -3,11 +3,10 @@ import os
 import queue
 import threading
 from dataclasses import dataclass
-from typing import Optional
 
 import pyttsx3
+import requests
 import speech_recognition as sr
-from openai import OpenAI
 from twitchio.ext import commands
 
 
@@ -17,8 +16,8 @@ class Settings:
     twitch_client_id: str
     twitch_nick: str
     twitch_channel: str
-    openai_api_key: str
-    openai_model: str = "gpt-4o-mini"
+    ollama_model: str = "llama3.2:3b"
+    ollama_base_url: str = "http://127.0.0.1:11434"
     bot_prefix: str = "!"
 
     @staticmethod
@@ -28,7 +27,6 @@ class Settings:
             "TWITCH_CLIENT_ID": os.getenv("TWITCH_CLIENT_ID"),
             "TWITCH_NICK": os.getenv("TWITCH_NICK"),
             "TWITCH_CHANNEL": os.getenv("TWITCH_CHANNEL"),
-            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
         }
         missing = [k for k, v in required.items() if not v]
         if missing:
@@ -39,8 +37,8 @@ class Settings:
             twitch_client_id=required["TWITCH_CLIENT_ID"],
             twitch_nick=required["TWITCH_NICK"],
             twitch_channel=required["TWITCH_CHANNEL"],
-            openai_api_key=required["OPENAI_API_KEY"],
-            openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "llama3.2:3b"),
+            ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -97,7 +95,6 @@ class CatVoiceBot(commands.Bot):
             initial_channels=[settings.twitch_channel],
         )
         self.settings = settings
-        self.llm = OpenAI(api_key=settings.openai_api_key)
         self.voice_queue: queue.Queue[str] = queue.Queue()
         self.voice_listener = VoiceListener(self.voice_queue)
         self.speaker = Speaker()
@@ -134,19 +131,33 @@ class CatVoiceBot(commands.Bot):
             await asyncio.to_thread(self.speaker.speak, reply)
 
     async def generate_reply(self, content: str) -> str:
-        response = await asyncio.to_thread(
-            self.llm.responses.create,
-            model=self.settings.openai_model,
-            input=[
+        payload = {
+            "model": self.settings.ollama_model,
+            "stream": False,
+            "messages": [
                 {
                     "role": "system",
                     "content": "You are CatVoice, a friendly live-stream co-host. Keep replies concise, fun, and safe for Twitch.",
                 },
                 {"role": "user", "content": content},
             ],
-            max_output_tokens=140,
-        )
-        return response.output_text.strip() or "Meow?"
+            "options": {"num_predict": 120},
+        }
+
+        try:
+            response = await asyncio.to_thread(
+                requests.post,
+                f"{self.settings.ollama_base_url}/api/chat",
+                json=payload,
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
+            text = data.get("message", {}).get("content", "").strip()
+            return text or "Meow?"
+        except requests.RequestException as exc:
+            print(f"[ollama error] {exc}")
+            return "I couldn't reach Ollama. Is it running?"
 
 
 async def main() -> None:
