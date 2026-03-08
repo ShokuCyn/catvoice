@@ -1,12 +1,10 @@
 # CatVoice Twitch Bot (Windows-Friendly + Free Local AI)
 
-This is a small Python app that can act like your stream co-host. It can:
+This app can:
 - Read Twitch chat
 - Listen to your microphone
 - Generate responses with a **free local AI model** (Ollama)
-- Speak that response out loud on your PC
-
-If you are on **Windows** and not super technical, follow this exactly.
+- Speak replies out loud on your PC
 
 ---
 
@@ -14,28 +12,22 @@ If you are on **Windows** and not super technical, follow this exactly.
 
 1. **Windows 10/11**
 2. **A Twitch account** (for the bot)
-3. **Python 3.10+** installed from [python.org](https://www.python.org/downloads/windows/)
+3. **Python 3.10+** from [python.org](https://www.python.org/downloads/windows/)
    - During install, check **"Add Python to PATH"**
-4. **Ollama** (free local AI runtime) from https://ollama.com/download/windows
+4. **Ollama** from https://ollama.com/download/windows
 
 ---
 
-## Step 1) Download/open this project
+## Step 1) Open this project in PowerShell
 
-If you already have the files, open the project folder in File Explorer.
-
-Easy way to open a terminal in the folder:
-1. Click the folder path bar in File Explorer
-2. Type `powershell`
-3. Press Enter
-
-You should now have a PowerShell window in this project folder.
+1. Open the project folder in File Explorer.
+2. Click the path bar, type `powershell`, press Enter.
 
 ---
 
-## Step 2) Create and activate a virtual environment
+## Step 2) Install dependencies
 
-Run these commands one at a time in **PowerShell**:
+Run these commands in PowerShell:
 
 ```powershell
 python -m venv .venv
@@ -44,73 +36,65 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-If PowerShell blocks activation, run this once:
+If activation is blocked, run once:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-Then run:
-
-```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
 ---
 
-## Step 3) Install and start Ollama (free chatbot API)
-
-1. Install Ollama for Windows: https://ollama.com/download/windows
-2. Open a **new** PowerShell window and run:
+## Step 3) Install and prepare Ollama
 
 ```powershell
 ollama pull llama3.2:3b
 ```
 
-That downloads a free model the bot can use.
-
-> Keep Ollama running in the background while using the bot.
+Keep Ollama running while using the bot.
 
 ---
 
-## Step 4) Get your Twitch bot credentials
+## Step 4) Get Twitch credentials
 
-You need values for:
+You need:
 - `TWITCH_TOKEN`
 - `TWITCH_CLIENT_ID`
 - `TWITCH_NICK`
 - `TWITCH_CHANNEL`
 
-### Easiest way for token + client ID
-Use the Twitch Token Generator:
-- https://twitchtokengenerator.com/
-
-Generate a **chat bot token** and copy:
-- **Access Token** (must look like `oauth:...`)
-- **Client ID**
-
-### What each value means
-- `TWITCH_TOKEN`: your bot OAuth token, starts with `oauth:`
-- `TWITCH_CLIENT_ID`: client id from token generator
-- `TWITCH_NICK`: your bot Twitch username (lowercase recommended)
-- `TWITCH_CHANNEL`: your channel name (the channel to join)
+Easy source: https://twitchtokengenerator.com/
+- Generate a chat bot token
+- Copy Access Token (`oauth:...`) and Client ID
 
 ---
 
-## Step 5) Set environment variables (PowerShell)
+## Step 5) Make variables persistent (recommended)
 
-In the same PowerShell window, run (replace values with yours):
+Use a `.env` file so values are saved and reused every run.
+
+### 5a) Create `.env` from the example
 
 ```powershell
-$env:TWITCH_TOKEN="oauth:paste_yours_here"
-$env:TWITCH_CLIENT_ID="paste_client_id_here"
-$env:TWITCH_NICK="your_bot_username"
-$env:TWITCH_CHANNEL="your_channel_name"
-$env:OLLAMA_BASE_URL="http://127.0.0.1:11434"
-$env:OLLAMA_MODEL="llama3.2:3b"
+Copy-Item .env.example .env
+notepad .env
 ```
 
-> Important: these `$env:` values only last for the current terminal window.
+### 5b) Fill in `.env` values
+
+Set these in Notepad:
+- `TWITCH_TOKEN=oauth:...`
+- `TWITCH_CLIENT_ID=...`
+- `TWITCH_NICK=...`
+- `TWITCH_CHANNEL=...`
+- Keep `OLLAMA_BASE_URL=http://127.0.0.1:11434`
+- Keep or change `OLLAMA_MODEL=llama3.2:3b`
+
+Save and close Notepad.
+
+That’s it — the bot now loads these automatically on startup.
+
+> Optional alternative: use `setx` to store variables in Windows user environment, but `.env` is easier to edit.
 
 ---
 
@@ -120,65 +104,44 @@ $env:OLLAMA_MODEL="llama3.2:3b"
 python bot.py
 ```
 
-If it starts correctly, it should connect to Twitch chat and begin listening for microphone input.
+If startup is successful, it should connect to Twitch chat and start listening to your microphone.
 
 ---
 
-## Daily use (quick start after first setup)
-
-When you come back later:
+## Daily quick start
 
 ```powershell
 cd path\to\catvoice
 .\.venv\Scripts\Activate.ps1
-# make sure Ollama is running
-# set env vars again (or use a .env loader in your own workflow)
 python bot.py
 ```
+
+No need to retype variables if your `.env` file is already configured.
 
 ---
 
 ## Common Windows issues
 
 ### "python is not recognized"
-- Reinstall Python and check **"Add Python to PATH"** during setup.
-- Reopen PowerShell after install.
+- Reinstall Python and check **"Add Python to PATH"**.
+- Reopen PowerShell.
 
 ### "ollama is not recognized"
 - Restart PowerShell after installing Ollama.
-- If still broken, restart Windows once and try again.
+- If still failing, restart Windows.
 
 ### "I couldn't reach Ollama. Is it running?"
-- Start Ollama app on Windows.
-- Test in PowerShell:
+- Open/start Ollama.
+- Test:
 
 ```powershell
 ollama list
 ```
 
-If that works, run the bot again.
-
 ### Microphone not detected
-- Check Windows Privacy settings:
-  - **Settings → Privacy & security → Microphone**
-  - Make sure microphone access is enabled.
-
-### No speech output
-- Ensure Windows audio output is working.
-- `pyttsx3` uses local system voices; try changing default Windows voice settings.
+- Windows Settings → Privacy & security → Microphone.
+- Enable microphone access.
 
 ### Twitch auth errors
-- Make sure token starts with `oauth:`
-- Make sure `TWITCH_NICK` matches the account used for the token.
-
----
-
-## Notes
-
-- Chat responses are posted to Twitch and spoken locally on your machine.
-- Voice input is transcribed using the SpeechRecognition package (Google Speech backend).
-- If dependencies fail to install, upgrade pip first:
-
-```powershell
-python -m pip install --upgrade pip
-```
+- Token must start with `oauth:`
+- `TWITCH_NICK` should match token account.

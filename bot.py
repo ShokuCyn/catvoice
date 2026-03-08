@@ -7,7 +7,11 @@ from dataclasses import dataclass
 import pyttsx3
 import requests
 import speech_recognition as sr
+from dotenv import load_dotenv
 from twitchio.ext import commands
+
+
+load_dotenv()
 
 
 @dataclass

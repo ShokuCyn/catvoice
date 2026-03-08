@@ -3,3 +3,4 @@ TwitchIO>=2.10.0
 SpeechRecognition>=3.10.0
 PyAudio>=0.2.14
 pyttsx3>=2.97
+python-dotenv>=1.0.1
