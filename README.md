@@ -3,6 +3,8 @@
 This app can:
 - Read Twitch chat
 - Listen to your microphone
+- Prioritize your microphone when generating responses
+- Reply to Twitch chat on a cooldown so it does not answer every single message
 - Generate playful cat-like responses with a **free local AI model** (Ollama)
 - Speak replies out loud on your PC with a cuter/faster voice profile
 
@@ -48,7 +50,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ## Step 3) Install and prepare Ollama
 
 ```powershell
-ollama pull gpt-oss:20b
+ollama pull llama3.2:3b
 ```
 
 Keep Ollama running while using the bot.
@@ -88,8 +90,9 @@ Set these in Notepad:
 - `TWITCH_NICK=...`
 - `TWITCH_CHANNEL=...`
 - Keep `OLLAMA_BASE_URL=http://127.0.0.1:11434`
-- Keep or change `OLLAMA_MODEL=gpt-oss:20b`
+- Keep or change `OLLAMA_MODEL=llama3.2:3b`
 - `OLLAMA_TIMEOUT_SECONDS=120` (increase this if first reply times out)
+- `CHAT_RESPONSE_COOLDOWN_SECONDS=20` (how often to reply to chat; mic still takes priority)
 
 Save and close Notepad.
 
@@ -142,6 +145,10 @@ ollama list
 ### Read timed out on first message
 - Bigger models can take longer for the first response.
 - Increase `OLLAMA_TIMEOUT_SECONDS` in your `.env` (example: `180` or `240`).
+
+### Too many chat replies / too few chat replies
+- Change `CHAT_RESPONSE_COOLDOWN_SECONDS` in `.env`.
+- Lower value = replies more often, higher value = replies less often.
 
 ### Microphone not detected
 - Windows Settings → Privacy & security → Microphone.

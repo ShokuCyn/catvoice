@@ -20,9 +20,10 @@ class Settings:
     twitch_client_id: str
     twitch_nick: str
     twitch_channel: str
-    ollama_model: str = "gpt-oss:20b"
+    ollama_model: str = "llama3.2:3b"
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_timeout_seconds: int = 120
+    chat_response_cooldown_seconds: int = 20
     bot_prefix: str = "!"
 
     @staticmethod
@@ -38,19 +39,27 @@ class Settings:
             raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 
         timeout_raw = os.getenv("OLLAMA_TIMEOUT_SECONDS", "120")
+        cooldown_raw = os.getenv("CHAT_RESPONSE_COOLDOWN_SECONDS", "20")
+
         try:
             timeout_seconds = max(15, int(timeout_raw))
         except ValueError:
             timeout_seconds = 120
+
+        try:
+            cooldown_seconds = max(0, int(cooldown_raw))
+        except ValueError:
+            cooldown_seconds = 20
 
         return Settings(
             twitch_token=required["TWITCH_TOKEN"],
             twitch_client_id=required["TWITCH_CLIENT_ID"],
             twitch_nick=required["TWITCH_NICK"],
             twitch_channel=required["TWITCH_CHANNEL"],
-            ollama_model=os.getenv("OLLAMA_MODEL", "gpt-oss:20b"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "llama3.2:3b"),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
             ollama_timeout_seconds=timeout_seconds,
+            chat_response_cooldown_seconds=cooldown_seconds,
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -87,10 +96,14 @@ class VoiceListener(threading.Thread):
         self._stop.set()
 
 
-class Speaker:
+class Speaker(threading.Thread):
+    """Single-threaded TTS worker to avoid pyttsx3 run loop conflicts."""
+
     def __init__(self) -> None:
+        super().__init__(daemon=True)
+        self.queue: queue.Queue[str] = queue.Queue()
+        self._stop = threading.Event()
         self.engine = pyttsx3.init()
-        self._lock = threading.Lock()
         self.engine.setProperty("rate", 195)
         self.engine.setProperty("volume", 1.0)
         self._set_cuter_voice()
@@ -105,11 +118,20 @@ class Speaker:
                 self.engine.setProperty("voice", voice.id)
                 break
 
-
-    def speak(self, text: str) -> None:
-        with self._lock:
+    def run(self) -> None:
+        while not self._stop.is_set():
+            text = self.queue.get()
+            if text == "__STOP__":
+                break
             self.engine.say(text)
             self.engine.runAndWait()
+
+    def speak(self, text: str) -> None:
+        self.queue.put(text)
+
+    def stop(self) -> None:
+        self._stop.set()
+        self.queue.put("__STOP__")
 
 
 class CatVoiceBot(commands.Bot):
@@ -123,39 +145,67 @@ class CatVoiceBot(commands.Bot):
         )
         self.settings = settings
         self.voice_queue: queue.Queue[str] = queue.Queue()
+        self.chat_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
         self.voice_listener = VoiceListener(self.voice_queue)
         self.speaker = Speaker()
 
     async def event_ready(self) -> None:
         print(f"Logged in as: {self.nick}")
         print(f"Listening in: #{self.settings.twitch_channel}")
+        print(f"Chat response cooldown: {self.settings.chat_response_cooldown_seconds}s")
         self.voice_listener.start()
-        asyncio.create_task(self.voice_loop())
+        self.speaker.start()
+        asyncio.create_task(self.response_loop())
 
     async def event_message(self, message) -> None:
         if message.echo:
             return
 
         if message.content:
-            prompt = f"Twitch chat from {message.author.name}: {message.content}"
-            reply = await self.generate_reply(prompt)
-            await message.channel.send(reply[:450])
-            await asyncio.to_thread(self.speaker.speak, reply)
+            await self.chat_queue.put((message.author.name, message.content))
 
         await self.handle_commands(message)
 
-    async def voice_loop(self) -> None:
+    async def response_loop(self) -> None:
+        next_chat_reply_time = 0.0
+
         while True:
-            text = await asyncio.to_thread(self.voice_queue.get)
-            if text.startswith("[voice error]"):
-                print(text)
+            try:
+                mic_text = self.voice_queue.get_nowait()
+            except queue.Empty:
+                mic_text = None
+
+            if mic_text is not None:
+                if mic_text.startswith("[voice error]"):
+                    print(mic_text)
+                    continue
+
+                print(f"Mic heard: {mic_text}")
+                reply = await self.generate_reply(f"Streamer voice input: {mic_text}")
+                channel = self.get_channel(self.settings.twitch_channel)
+                if channel:
+                    await channel.send(f"🎙️ {reply[:430]}")
+                self.speaker.speak(reply)
                 continue
-            print(f"Mic heard: {text}")
-            reply = await self.generate_reply(f"Streamer voice input: {text}")
-            channel = self.get_channel(self.settings.twitch_channel)
-            if channel:
-                await channel.send(f"🎙️ {reply[:430]}")
-            await asyncio.to_thread(self.speaker.speak, reply)
+
+            now = asyncio.get_running_loop().time()
+            if now >= next_chat_reply_time:
+                try:
+                    author, content = self.chat_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                prompt = f"Twitch chat from {author}: {content}"
+                reply = await self.generate_reply(prompt)
+                channel = self.get_channel(self.settings.twitch_channel)
+                if channel:
+                    await channel.send(reply[:450])
+                self.speaker.speak(reply)
+                next_chat_reply_time = now + self.settings.chat_response_cooldown_seconds
+                continue
+
+            await asyncio.sleep(0.1)
 
     async def generate_reply(self, content: str) -> str:
         payload = {
@@ -205,6 +255,7 @@ async def main() -> None:
         await bot.start()
     finally:
         bot.voice_listener.stop()
+        bot.speaker.stop()
 
 
 if __name__ == "__main__":
