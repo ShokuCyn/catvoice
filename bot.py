@@ -29,6 +29,8 @@ class Settings:
     streamlabs_tts_url: str = "https://streamlabs.com/polly/speak"
     streamlabs_voice: str = "Joanna"
     streamlabs_tts_timeout_seconds: int = 30
+    streamelements_tts_url: str = "https://api.streamelements.com/kappa/v2/speech"
+    streamelements_voice: str = "Joanna"
     bot_prefix: str = "!"
 
     @staticmethod
@@ -74,6 +76,11 @@ class Settings:
             streamlabs_tts_url=os.getenv("STREAMLABS_TTS_URL", "https://streamlabs.com/polly/speak"),
             streamlabs_voice=os.getenv("STREAMLABS_VOICE", "Joanna"),
             streamlabs_tts_timeout_seconds=tts_timeout_seconds,
+            streamelements_tts_url=os.getenv(
+                "STREAMELEMENTS_TTS_URL",
+                "https://api.streamelements.com/kappa/v2/speech",
+            ),
+            streamelements_voice=os.getenv("STREAMELEMENTS_VOICE", "Joanna"),
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -134,24 +141,23 @@ class Speaker(threading.Thread):
         self.queue.put("__STOP__")
 
     def _speak_streamlabs(self, text: str) -> None:
+        safe_text = self._normalize_tts_text(text)
+        if not safe_text:
+            return
+
         try:
-            response = requests.get(
-                self.settings.streamlabs_tts_url,
-                params={"voice": self.settings.streamlabs_voice, "text": text},
-                timeout=self.settings.streamlabs_tts_timeout_seconds,
-            )
-            response.raise_for_status()
-            data = response.json()
-            speak_url = data.get("speak_url")
-            if not speak_url:
-                print(f"[streamlabs tts error] unexpected response: {data}")
+            audio_bytes = self._fetch_streamlabs_audio(safe_text)
+        except requests.RequestException as exc:
+            print(f"[streamlabs tts error] {exc}; falling back to StreamElements")
+            try:
+                audio_bytes = self._fetch_streamelements_audio(safe_text)
+            except requests.RequestException as fallback_exc:
+                print(f"[streamelements tts error] {fallback_exc}")
                 return
 
-            audio_response = requests.get(speak_url, timeout=self.settings.streamlabs_tts_timeout_seconds)
-            audio_response.raise_for_status()
-
+        try:
             with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as audio_file:
-                audio_file.write(audio_response.content)
+                audio_file.write(audio_bytes)
                 temp_path = Path(audio_file.name)
 
             try:
@@ -159,10 +165,44 @@ class Speaker(threading.Thread):
             finally:
                 temp_path.unlink(missing_ok=True)
 
-        except requests.RequestException as exc:
-            print(f"[streamlabs tts error] {exc}")
         except Exception as exc:  # noqa: BLE001
             print(f"[streamlabs tts playback error] {exc}")
+
+    def _normalize_tts_text(self, text: str) -> str:
+        cleaned = text.replace("*", "")
+        cleaned = " ".join(cleaned.split())
+        return cleaned[:280]
+
+    def _fetch_streamlabs_audio(self, text: str) -> bytes:
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "Referer": "https://streamlabs.com/",
+        }
+        response = requests.get(
+            self.settings.streamlabs_tts_url,
+            params={"voice": self.settings.streamlabs_voice, "text": text},
+            headers=headers,
+            timeout=self.settings.streamlabs_tts_timeout_seconds,
+        )
+        response.raise_for_status()
+        data = response.json()
+        speak_url = data.get("speak_url")
+        if not speak_url:
+            raise requests.RequestException(f"unexpected Streamlabs response: {data}")
+
+        audio_response = requests.get(speak_url, timeout=self.settings.streamlabs_tts_timeout_seconds)
+        audio_response.raise_for_status()
+        return audio_response.content
+
+    def _fetch_streamelements_audio(self, text: str) -> bytes:
+        response = requests.get(
+            self.settings.streamelements_tts_url,
+            params={"voice": self.settings.streamelements_voice, "text": text},
+            timeout=self.settings.streamlabs_tts_timeout_seconds,
+        )
+        response.raise_for_status()
+        return response.content
 
 
 class CatVoiceBot(commands.Bot):

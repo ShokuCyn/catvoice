@@ -6,7 +6,7 @@ This app can:
 - Prioritize your microphone when generating responses
 - Reply to Twitch chat on a cooldown so it does not answer every single message
 - Generate playful cat-like responses with a **free local AI model** (Ollama)
-- Speak replies out loud using Streamlabs TTS (girl voice)
+- Speak replies out loud using Streamlabs TTS (girl voice), with StreamElements fallback if Streamlabs blocks a request
 
 ---
 
@@ -96,6 +96,8 @@ Set these in Notepad:
 - `STREAMLABS_TTS_URL=https://streamlabs.com/polly/speak`
 - `STREAMLABS_VOICE=Joanna` (girl voice)
 - `STREAMLABS_TTS_TIMEOUT_SECONDS=30`
+- `STREAMELEMENTS_TTS_URL=https://api.streamelements.com/kappa/v2/speech`
+- `STREAMELEMENTS_VOICE=Joanna`
 
 Save and close Notepad.
 
