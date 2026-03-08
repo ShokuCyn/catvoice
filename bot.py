@@ -22,6 +22,7 @@ class Settings:
     twitch_channel: str
     ollama_model: str = "gpt-oss:20b"
     ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_timeout_seconds: int = 120
     bot_prefix: str = "!"
 
     @staticmethod
@@ -36,6 +37,12 @@ class Settings:
         if missing:
             raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 
+        timeout_raw = os.getenv("OLLAMA_TIMEOUT_SECONDS", "120")
+        try:
+            timeout_seconds = max(15, int(timeout_raw))
+        except ValueError:
+            timeout_seconds = 120
+
         return Settings(
             twitch_token=required["TWITCH_TOKEN"],
             twitch_client_id=required["TWITCH_CLIENT_ID"],
@@ -43,6 +50,7 @@ class Settings:
             twitch_channel=required["TWITCH_CHANNEL"],
             ollama_model=os.getenv("OLLAMA_MODEL", "gpt-oss:20b"),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
+            ollama_timeout_seconds=timeout_seconds,
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -97,11 +105,6 @@ class Speaker:
                 self.engine.setProperty("voice", voice.id)
                 break
 
-        try:
-            self.engine.setProperty("pitch", 65)
-        except Exception:
-            # Some pyttsx3 drivers (including some Windows setups) do not support pitch.
-            pass
 
     def speak(self, text: str) -> None:
         with self._lock:
@@ -178,12 +181,18 @@ class CatVoiceBot(commands.Bot):
                 requests.post,
                 f"{self.settings.ollama_base_url}/api/chat",
                 json=payload,
-                timeout=30,
+                timeout=self.settings.ollama_timeout_seconds,
             )
             response.raise_for_status()
             data = response.json()
             text = data.get("message", {}).get("content", "").strip()
             return text or "Meow?"
+        except requests.ReadTimeout:
+            print("[ollama error] request timed out while waiting for model response")
+            return (
+                "Mrrp... that model is taking too long. "
+                "Try increasing OLLAMA_TIMEOUT_SECONDS or using a smaller model."
+            )
         except requests.RequestException as exc:
             print(f"[ollama error] {exc}")
             return "I couldn't reach Ollama. Is it running?"

@@ -89,6 +89,7 @@ Set these in Notepad:
 - `TWITCH_CHANNEL=...`
 - Keep `OLLAMA_BASE_URL=http://127.0.0.1:11434`
 - Keep or change `OLLAMA_MODEL=gpt-oss:20b`
+- `OLLAMA_TIMEOUT_SECONDS=120` (increase this if first reply times out)
 
 Save and close Notepad.
 
@@ -137,6 +138,10 @@ No need to retype variables if your `.env` file is already configured.
 ```powershell
 ollama list
 ```
+
+### Read timed out on first message
+- Bigger models can take longer for the first response.
+- Increase `OLLAMA_TIMEOUT_SECONDS` in your `.env` (example: `180` or `240`).
 
 ### Microphone not detected
 - Windows Settings → Privacy & security → Microphone.
