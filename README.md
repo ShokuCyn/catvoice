@@ -8,7 +8,7 @@ This app can:
 - Stores chat memory logs (excluding Shoku_Cyn) and uses recent memory for better context
 - Randomly says off-topic cat/stream/get-to-know-you lines every 1–12 minutes
 - Generate playful cat-like responses with a **free local AI model** (Ollama)
-- Speak replies out loud with a more realistic local neural voice by default (optional web TTS mode available)
+- Speak replies out loud with a realistic male local neural voice (slightly higher pitched) by default
 
 ---
 
@@ -101,11 +101,12 @@ Set these in Notepad:
 - `MIC_LISTEN_TIMEOUT_SECONDS=3.0`
 - `MIC_PHRASE_TIME_LIMIT_SECONDS=12.0`
 - `MEMORY_DIR=memory` (folder where user chat logs are stored)
-- `MEMORY_EXCLUDED_USER=Shoku_Cyn` (this user is excluded from stored memory logs)
+- `MEMORY_EXCLUDED_USER=` (leave blank to remember everyone, including Shoku_Cyn)
 - `MEMORY_MAX_LINES=12` (how many recent memory lines to pass into model context)
 - `USE_WEB_TTS=false` (recommended; uses local neural voice mode)
-- `LOCAL_TTS_VOICE=en-US-AvaNeural` (realistic default voice)
-- `LOCAL_TTS_RATE=+5%`
+- `LOCAL_TTS_VOICE=en-US-GuyNeural` (realistic male default voice)
+- `LOCAL_TTS_RATE=+10%`
+- `LOCAL_TTS_PITCH=+4Hz` (slightly higher-pitched male voice)
 - `STREAMLABS_TTS_URL=https://streamlabs.com/polly/speak`
 - `STREAMLABS_VOICE=Joanna` (used when `USE_WEB_TTS=true`)
 - `STREAMLABS_TTS_TIMEOUT_SECONDS=30`
@@ -177,7 +178,7 @@ ollama list
 
 ### Memory logs
 - Logs are written per-user inside `MEMORY_DIR` (default `memory/`).
-- `MEMORY_EXCLUDED_USER` is never written to memory logs.
+- If `MEMORY_EXCLUDED_USER` is blank, all users (including Shoku_Cyn) are remembered.
 - Increase `MEMORY_MAX_LINES` if you want more context included in replies.
 
 ### TTS only speaks once / unreliable web voice

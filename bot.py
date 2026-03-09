@@ -37,15 +37,16 @@ class Settings:
     streamelements_tts_url: str = ""
     streamelements_voice: str = "Joanna"
     use_web_tts: bool = False
-    local_tts_voice: str = "en-US-AvaNeural"
-    local_tts_rate: str = "+5%"
+    local_tts_voice: str = "en-US-GuyNeural"
+    local_tts_rate: str = "+10%"
+    local_tts_pitch: str = "+4Hz"
     off_topic_min_seconds: int = 60
     off_topic_max_seconds: int = 720
     mic_ambient_adjust_seconds: float = 2.0
     mic_listen_timeout_seconds: float = 3.0
     mic_phrase_time_limit_seconds: float = 12.0
     memory_dir: str = "memory"
-    memory_excluded_user: str = "Shoku_Cyn"
+    memory_excluded_user: str = ""
     memory_max_lines: int = 12
     bot_prefix: str = "!"
 
@@ -132,15 +133,16 @@ class Settings:
             streamelements_tts_url=os.getenv("STREAMELEMENTS_TTS_URL", "").strip(),
             streamelements_voice=os.getenv("STREAMELEMENTS_VOICE", "Joanna"),
             use_web_tts=use_web_tts,
-            local_tts_voice=os.getenv("LOCAL_TTS_VOICE", "en-US-AvaNeural"),
-            local_tts_rate=os.getenv("LOCAL_TTS_RATE", "+5%"),
+            local_tts_voice=os.getenv("LOCAL_TTS_VOICE", "en-US-GuyNeural"),
+            local_tts_rate=os.getenv("LOCAL_TTS_RATE", "+10%"),
+            local_tts_pitch=os.getenv("LOCAL_TTS_PITCH", "+4Hz"),
             off_topic_min_seconds=off_topic_min_seconds,
             off_topic_max_seconds=off_topic_max_seconds,
             mic_ambient_adjust_seconds=mic_ambient_adjust_seconds,
             mic_listen_timeout_seconds=mic_listen_timeout_seconds,
             mic_phrase_time_limit_seconds=mic_phrase_time_limit_seconds,
             memory_dir=os.getenv("MEMORY_DIR", "memory"),
-            memory_excluded_user=os.getenv("MEMORY_EXCLUDED_USER", "Shoku_Cyn"),
+            memory_excluded_user=os.getenv("MEMORY_EXCLUDED_USER", "").strip(),
             memory_max_lines=memory_max_lines,
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
@@ -270,6 +272,7 @@ class Speaker(threading.Thread):
                     text=text,
                     voice=self.settings.local_tts_voice,
                     rate=self.settings.local_tts_rate,
+                    pitch=self.settings.local_tts_pitch,
                 )
                 asyncio.run(communicate.save(str(temp_path)))
                 playsound(str(temp_path), block=True)
@@ -409,7 +412,7 @@ class CatVoiceBot(commands.Bot):
     def _append_user_memory(self, username: str, content: str) -> None:
         if not content.strip():
             return
-        if username.casefold() == self.settings.memory_excluded_user.casefold():
+        if self.settings.memory_excluded_user and username.casefold() == self.settings.memory_excluded_user.casefold():
             return
 
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
@@ -515,7 +518,7 @@ class CatVoiceBot(commands.Bot):
         return (
             "Current input:\n"
             f"{content}\n\n"
-            "Recent memory from other Twitch users (excluding Shoku_Cyn):\n"
+            "Recent memory from Twitch users:\n"
             f"{memory}\n\n"
             "Use memory only if relevant and keep response concise."
         )
