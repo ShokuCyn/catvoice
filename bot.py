@@ -38,7 +38,7 @@ class Settings:
     streamelements_voice: str = "Joanna"
     use_web_tts: bool = False
     local_tts_voice: str = "en-US-GuyNeural"
-    local_tts_rate: str = "+10%"
+    local_tts_rate: str = "+25%"
     local_tts_pitch: str = "+10Hz"
     off_topic_min_seconds: int = 60
     off_topic_max_seconds: int = 720
@@ -134,7 +134,7 @@ class Settings:
             streamelements_voice=os.getenv("STREAMELEMENTS_VOICE", "Joanna"),
             use_web_tts=use_web_tts,
             local_tts_voice=os.getenv("LOCAL_TTS_VOICE", "en-US-GuyNeural"),
-            local_tts_rate=os.getenv("LOCAL_TTS_RATE", "+10%"),
+            local_tts_rate=os.getenv("LOCAL_TTS_RATE", "+20%"),
             local_tts_pitch=os.getenv("LOCAL_TTS_PITCH", "+10Hz"),
             off_topic_min_seconds=off_topic_min_seconds,
             off_topic_max_seconds=off_topic_max_seconds,
@@ -200,24 +200,28 @@ class Speaker(threading.Thread):
             item = self.queue.get()
             if item is self._stop_sentinel:
                 break
-            if not isinstance(item, str):
+            if not isinstance(item, tuple) or len(item) != 2:
+                continue
+
+            text, force_local_default = item
+            if not isinstance(text, str):
                 continue
 
             try:
-                self._speak(item)
+                self._speak(text, force_local_default=bool(force_local_default))
             except Exception as exc:  # noqa: BLE001
                 # Never let the speaker worker die; keep consuming queue items.
                 print(f"[speaker worker error] {exc}")
 
-    def speak(self, text: str) -> None:
-        self.queue.put(text)
+    def speak(self, text: str, force_local_default: bool = False) -> None:
+        self.queue.put((text, force_local_default))
 
     def stop(self) -> None:
         self._stop.set()
         self.queue.put(self._stop_sentinel)
 
-    def _speak(self, text: str) -> None:
-        if self.settings.use_web_tts:
+    def _speak(self, text: str, force_local_default: bool = False) -> None:
+        if self.settings.use_web_tts and not force_local_default:
             self._speak_streamlabs(text)
             return
 
@@ -341,7 +345,7 @@ class Speaker(threading.Thread):
         return response.content
 
 
-class CatVoiceBot(commands.Bot):
+class TiuCynBot(commands.Bot):
     def __init__(self, settings: Settings) -> None:
         super().__init__(
             token=settings.twitch_token,
@@ -381,7 +385,6 @@ class CatVoiceBot(commands.Bot):
     def _random_off_topic_prompt(self) -> str:
         prompts = [
             "Say one short, playful cat-themed thought unrelated to current chat.",
-            "Share a quick streaming tip in a cat-like style.",
             "Ask the streamer one fun personal question to get to know them better.",
             "Say a cute off-topic line about snacks, naps, or cat energy on stream.",
             "Ask the audience a short question about their favorite part of today.",
@@ -440,11 +443,19 @@ class CatVoiceBot(commands.Bot):
             lines = lines[-self.settings.memory_max_lines :]
         return "\n".join(lines)
 
+    def _append_global_memory(self, username: str, content: str) -> None:
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        line = f"[{timestamp}] {username}: {content.strip()}\n"
+        global_path = self.memory_dir / ".gitkeep"
+        with global_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+
     async def event_message(self, message) -> None:
 
         if message.echo:
             return
         content = message.content or ""
+        self._append_global_memory(message.author.name, content)
         self._append_user_memory(message.author.name, content)
         if content:
             await self.chat_queue.put((message.author.name, content))
@@ -484,7 +495,7 @@ class CatVoiceBot(commands.Bot):
                 if channel:
                     await channel.send(f"🐾 {self._fit_for_chat(reply, 440)}")
                 self._ensure_speaker_running()
-                self.speaker.speak(reply)
+                self.speaker.speak(reply, force_local_default=True)
                 next_off_topic_time = now + self._next_off_topic_delay()
                 continue
 
@@ -533,15 +544,15 @@ class CatVoiceBot(commands.Bot):
                 {
                     "role": "system",
                     "content": (
-                        "You are CatVoice, a playful cat VTuber co-host. "
+                        "You are Tiu_Cyn, a playful cat VTuber co-host. "
                         "Keep replies concise, Twitch-safe, and cat-like. "
                         "Use occasional cat words like meow, purr, paws, or hiss naturally, "
-                        "without overdoing it. Never use roleplay/action formatting like *purrs* or stage directions."
+                        "without overdoing it. Keep replies short (1 sentence, <=20 words). Never give streaming advice unless explicitly asked. Never use roleplay/action formatting like *purrs* or stage directions."
                     ),
                 },
                 {"role": "user", "content": self._build_user_prompt(content)},
             ],
-            "options": {"num_predict": 120},
+            "options": {"num_predict": 70},
         }
 
         try:
@@ -566,7 +577,7 @@ class CatVoiceBot(commands.Bot):
 
 async def main() -> None:
     settings = Settings.from_env()
-    bot = CatVoiceBot(settings)
+    bot = TiuCynBot(settings)
     try:
         await bot.start()
     finally:

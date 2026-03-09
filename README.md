@@ -105,7 +105,7 @@ Set these in Notepad:
 - `MEMORY_MAX_LINES=0` (0 means unlimited memory context; set >0 to limit)
 - `USE_WEB_TTS=false` (recommended; uses local neural voice mode)
 - `LOCAL_TTS_VOICE=en-US-GuyNeural` (realistic male default voice)
-- `LOCAL_TTS_RATE=+10%`
+- `LOCAL_TTS_RATE=+20%`
 - `LOCAL_TTS_PITCH=+10Hz` (higher-pitched male voice)
 - `STREAMLABS_TTS_URL=https://streamlabs.com/polly/speak`
 - `STREAMLABS_VOICE=Joanna` (used when `USE_WEB_TTS=true`)
