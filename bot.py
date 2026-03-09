@@ -426,6 +426,16 @@ class TiuCynBot(commands.Bot):
 
     def _recent_memory_context(self) -> str:
         lines: list[str] = []
+
+        global_path = self.memory_dir / ".gitkeep"
+        if global_path.exists():
+            try:
+                with global_path.open("r", encoding="utf-8") as f:
+                    global_lines = [ln.strip() for ln in f.readlines() if ln.strip()]
+                lines.extend(global_lines[-40:])
+            except OSError:
+                pass
+
         for path in sorted(self.memory_dir.glob("*.log")):
             try:
                 with path.open("r", encoding="utf-8") as f:
@@ -449,6 +459,18 @@ class TiuCynBot(commands.Bot):
         global_path = self.memory_dir / ".gitkeep"
         with global_path.open("a", encoding="utf-8") as f:
             f.write(line)
+
+    def _append_bot_memory(self, content: str) -> None:
+        if not content.strip():
+            return
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        line = f"[{timestamp}] Tiu_Cyn: {content.strip()}\n"
+        global_path = self.memory_dir / ".gitkeep"
+        with global_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+
+    def _log_bot_reply(self, reply: str) -> None:
+        self._append_bot_memory(reply)
 
     async def event_message(self, message) -> None:
 
@@ -481,6 +503,7 @@ class TiuCynBot(commands.Bot):
                 channel = self.get_channel(self.settings.twitch_channel)
                 if channel:
                     await channel.send(f"🎙️ {self._fit_for_chat(reply, 430)}")
+                self._log_bot_reply(reply)
                 self._ensure_speaker_running()
                 self.speaker.speak(reply)
                 continue
@@ -494,6 +517,7 @@ class TiuCynBot(commands.Bot):
                 channel = self.get_channel(self.settings.twitch_channel)
                 if channel:
                     await channel.send(f"🐾 {self._fit_for_chat(reply, 440)}")
+                self._log_bot_reply(reply)
                 self._ensure_speaker_running()
                 self.speaker.speak(reply, force_local_default=True)
                 next_off_topic_time = now + self._next_off_topic_delay()
@@ -510,6 +534,7 @@ class TiuCynBot(commands.Bot):
                 channel = self.get_channel(self.settings.twitch_channel)
                 if channel:
                     await channel.send(self._fit_for_chat(reply, 450))
+                self._log_bot_reply(reply)
                 self._ensure_speaker_running()
                 self.speaker.speak(reply)
                 next_chat_reply_time = now + self.settings.chat_response_cooldown_seconds
@@ -531,7 +556,7 @@ class TiuCynBot(commands.Bot):
         return (
             "Current input:\n"
             f"{content}\n\n"
-            "Recent memory from Twitch users:\n"
+            "Recent memory log (users + bot):\n"
             f"{memory}\n\n"
             "Use memory only if relevant and keep response concise."
         )

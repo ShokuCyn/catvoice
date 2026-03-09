@@ -177,9 +177,10 @@ ollama list
 - Lower values = more frequent random lines, higher values = less frequent.
 
 ### Memory logs
-- Logs are written per-user inside `MEMORY_DIR` (default `memory/`).
+- Logs are written per-user inside `MEMORY_DIR` (default `memory/`) and to `memory/.gitkeep` as a global timeline.
 - If `MEMORY_EXCLUDED_USER` is blank, all users (including Shoku_Cyn) are remembered.
 - `MEMORY_MAX_LINES=0` means no cap; set a positive number if you want to limit context size.
+- Bot replies are also logged and reused as context in future replies.
 
 ### TTS only speaks once / unreliable web voice
 - Keep `USE_WEB_TTS=false` for the most reliable behavior (local neural TTS every message).
