@@ -5,8 +5,9 @@ This app can:
 - Listen to your microphone
 - Prioritize your microphone when generating responses
 - Reply to Twitch chat on a cooldown so it does not answer every single message
+- Randomly says off-topic cat/stream/get-to-know-you lines every 1–12 minutes
 - Generate playful cat-like responses with a **free local AI model** (Ollama)
-- Speak replies out loud reliably with local TTS by default (optional web TTS mode available)
+- Speak replies out loud with a more realistic local neural voice by default (optional web TTS mode available)
 
 ---
 
@@ -93,7 +94,14 @@ Set these in Notepad:
 - Keep or change `OLLAMA_MODEL=llama3.2:3b`
 - `OLLAMA_TIMEOUT_SECONDS=120` (increase this if first reply times out)
 - `CHAT_RESPONSE_COOLDOWN_SECONDS=20` (how often to reply to chat; mic still takes priority)
-- `USE_WEB_TTS=false` (recommended; most reliable, always uses local voice)
+- `OFFTOPIC_MIN_SECONDS=60`
+- `OFFTOPIC_MAX_SECONDS=720`
+- `MIC_AMBIENT_ADJUST_SECONDS=2.0`
+- `MIC_LISTEN_TIMEOUT_SECONDS=3.0`
+- `MIC_PHRASE_TIME_LIMIT_SECONDS=12.0`
+- `USE_WEB_TTS=false` (recommended; uses local neural voice mode)
+- `LOCAL_TTS_VOICE=en-US-AvaNeural` (realistic default voice)
+- `LOCAL_TTS_RATE=+5%`
 - `STREAMLABS_TTS_URL=https://streamlabs.com/polly/speak`
 - `STREAMLABS_VOICE=Joanna` (used when `USE_WEB_TTS=true`)
 - `STREAMLABS_TTS_TIMEOUT_SECONDS=30`
@@ -156,10 +164,23 @@ ollama list
 - Change `CHAT_RESPONSE_COOLDOWN_SECONDS` in `.env`.
 - Lower value = replies more often, higher value = replies less often.
 
+### Chat replies cut off mid sentence
+- The bot now trims long replies at sentence boundaries when possible before sending to Twitch.
+
+### Too much / too little off-topic chatter
+- Tune `OFFTOPIC_MIN_SECONDS` and `OFFTOPIC_MAX_SECONDS` in `.env`.
+- Lower values = more frequent random lines, higher values = less frequent.
+
 ### TTS only speaks once / unreliable web voice
-- Keep `USE_WEB_TTS=false` for the most reliable behavior (local TTS every message).
+- Keep `USE_WEB_TTS=false` for the most reliable behavior (local neural TTS every message).
+- Try another `LOCAL_TTS_VOICE` if you want a different realistic voice.
 - If you enable web mode, Streamlabs/StreamElements may rate-limit or block requests.
 - Increase `STREAMLABS_TTS_TIMEOUT_SECONDS` and try again.
+
+### Mic misses words / cuts you off
+- Increase `MIC_PHRASE_TIME_LIMIT_SECONDS` (example: `15` or `20`).
+- Increase `MIC_AMBIENT_ADJUST_SECONDS` if your room is noisy.
+- Increase `MIC_LISTEN_TIMEOUT_SECONDS` if you pause before speaking.
 
 ### Microphone not detected
 - Windows Settings → Privacy & security → Microphone.

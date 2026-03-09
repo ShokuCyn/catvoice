@@ -1,6 +1,8 @@
 import asyncio
 import os
 import queue
+import random
+import re
 import tempfile
 import threading
 from dataclasses import dataclass
@@ -8,6 +10,7 @@ from pathlib import Path
 
 import pyttsx3
 import requests
+import edge_tts
 import speech_recognition as sr
 from dotenv import load_dotenv
 from playsound import playsound
@@ -33,6 +36,13 @@ class Settings:
     streamelements_tts_url: str = ""
     streamelements_voice: str = "Joanna"
     use_web_tts: bool = False
+    local_tts_voice: str = "en-US-AvaNeural"
+    local_tts_rate: str = "+5%"
+    off_topic_min_seconds: int = 60
+    off_topic_max_seconds: int = 720
+    mic_ambient_adjust_seconds: float = 2.0
+    mic_listen_timeout_seconds: float = 3.0
+    mic_phrase_time_limit_seconds: float = 12.0
     bot_prefix: str = "!"
 
     @staticmethod
@@ -50,6 +60,11 @@ class Settings:
         timeout_raw = os.getenv("OLLAMA_TIMEOUT_SECONDS", "120")
         cooldown_raw = os.getenv("CHAT_RESPONSE_COOLDOWN_SECONDS", "20")
         tts_timeout_raw = os.getenv("STREAMLABS_TTS_TIMEOUT_SECONDS", "30")
+        off_topic_min_raw = os.getenv("OFFTOPIC_MIN_SECONDS", "60")
+        off_topic_max_raw = os.getenv("OFFTOPIC_MAX_SECONDS", "720")
+        mic_ambient_adjust_raw = os.getenv("MIC_AMBIENT_ADJUST_SECONDS", "2.0")
+        mic_listen_timeout_raw = os.getenv("MIC_LISTEN_TIMEOUT_SECONDS", "3.0")
+        mic_phrase_limit_raw = os.getenv("MIC_PHRASE_TIME_LIMIT_SECONDS", "12.0")
 
         try:
             timeout_seconds = max(15, int(timeout_raw))
@@ -65,6 +80,30 @@ class Settings:
             tts_timeout_seconds = max(5, int(tts_timeout_raw))
         except ValueError:
             tts_timeout_seconds = 30
+
+        try:
+            off_topic_min_seconds = max(60, int(off_topic_min_raw))
+        except ValueError:
+            off_topic_min_seconds = 60
+
+        try:
+            off_topic_max_seconds = max(off_topic_min_seconds, int(off_topic_max_raw))
+        except ValueError:
+            off_topic_max_seconds = 720
+        try:
+            mic_ambient_adjust_seconds = max(0.5, float(mic_ambient_adjust_raw))
+        except ValueError:
+            mic_ambient_adjust_seconds = 2.0
+
+        try:
+            mic_listen_timeout_seconds = max(1.0, float(mic_listen_timeout_raw))
+        except ValueError:
+            mic_listen_timeout_seconds = 3.0
+
+        try:
+            mic_phrase_time_limit_seconds = max(3.0, float(mic_phrase_limit_raw))
+        except ValueError:
+            mic_phrase_time_limit_seconds = 12.0
 
         use_web_tts = os.getenv("USE_WEB_TTS", "false").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -83,26 +122,42 @@ class Settings:
             streamelements_tts_url=os.getenv("STREAMELEMENTS_TTS_URL", "").strip(),
             streamelements_voice=os.getenv("STREAMELEMENTS_VOICE", "Joanna"),
             use_web_tts=use_web_tts,
+            local_tts_voice=os.getenv("LOCAL_TTS_VOICE", "en-US-AvaNeural"),
+            local_tts_rate=os.getenv("LOCAL_TTS_RATE", "+5%"),
+            off_topic_min_seconds=off_topic_min_seconds,
+            off_topic_max_seconds=off_topic_max_seconds,
+            mic_ambient_adjust_seconds=mic_ambient_adjust_seconds,
+            mic_listen_timeout_seconds=mic_listen_timeout_seconds,
+            mic_phrase_time_limit_seconds=mic_phrase_time_limit_seconds,
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
 
 class VoiceListener(threading.Thread):
-    def __init__(self, out_queue: queue.Queue[str]) -> None:
+    def __init__(self, out_queue: queue.Queue[str], settings: Settings) -> None:
         super().__init__(daemon=True)
         self.out_queue = out_queue
         self.recognizer = sr.Recognizer()
+        self.settings = settings
         self._stop = threading.Event()
 
     def run(self) -> None:
         mic = sr.Microphone()
+        self.recognizer.dynamic_energy_threshold = True
+        self.recognizer.pause_threshold = 0.8
+        self.recognizer.non_speaking_duration = 0.5
+
         with mic as source:
-            self.recognizer.adjust_for_ambient_noise(source, duration=1)
+            self.recognizer.adjust_for_ambient_noise(source, duration=self.settings.mic_ambient_adjust_seconds)
 
         while not self._stop.is_set():
             try:
                 with mic as source:
-                    audio = self.recognizer.listen(source, timeout=2, phrase_time_limit=8)
+                    audio = self.recognizer.listen(
+                        source,
+                        timeout=self.settings.mic_listen_timeout_seconds,
+                        phrase_time_limit=self.settings.mic_phrase_time_limit_seconds,
+                    )
                 text = self.recognizer.recognize_google(audio)
                 if text.strip():
                     self.out_queue.put(text.strip())
@@ -153,7 +208,7 @@ class Speaker(threading.Thread):
 
         safe_text = self._normalize_tts_text(text)
         if safe_text:
-            self._speak_local_fallback(safe_text)
+            self._speak_local_neural(safe_text)
 
     def _speak_streamlabs(self, text: str) -> None:
         safe_text = self._normalize_tts_text(text)
@@ -191,6 +246,25 @@ class Speaker(threading.Thread):
         cleaned = text.replace("*", "")
         cleaned = " ".join(cleaned.split())
         return cleaned[:280]
+
+    def _speak_local_neural(self, text: str) -> None:
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as audio_file:
+                temp_path = Path(audio_file.name)
+
+            try:
+                communicate = edge_tts.Communicate(
+                    text=text,
+                    voice=self.settings.local_tts_voice,
+                    rate=self.settings.local_tts_rate,
+                )
+                asyncio.run(communicate.save(str(temp_path)))
+                playsound(str(temp_path), block=True)
+            finally:
+                temp_path.unlink(missing_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[local neural tts error] {exc}; using pyttsx3 fallback")
+            self._speak_local_fallback(text)
 
     def _speak_local_fallback(self, text: str) -> None:
         try:
@@ -263,7 +337,7 @@ class CatVoiceBot(commands.Bot):
         self.settings = settings
         self.voice_queue: queue.Queue[str] = queue.Queue()
         self.chat_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
-        self.voice_listener = VoiceListener(self.voice_queue)
+        self.voice_listener = VoiceListener(self.voice_queue, settings)
         self.speaker = Speaker(settings)
 
     def _ensure_speaker_running(self) -> None:
@@ -280,6 +354,39 @@ class CatVoiceBot(commands.Bot):
         self.speaker.start()
         asyncio.create_task(self.response_loop())
 
+    def _next_off_topic_delay(self) -> float:
+        return random.uniform(
+            float(self.settings.off_topic_min_seconds),
+            float(self.settings.off_topic_max_seconds),
+        )
+
+    def _random_off_topic_prompt(self) -> str:
+        prompts = [
+            "Say one short, playful cat-themed thought unrelated to current chat.",
+            "Share a quick streaming tip in a cat-like style.",
+            "Ask the streamer one fun personal question to get to know them better.",
+            "Say a cute off-topic line about snacks, naps, or cat energy on stream.",
+            "Ask the audience a short question about their favorite part of today.",
+            "Drop a random wholesome cat fact in one sentence.",
+            "Ask the streamer about their mood, favorite game, or current vibe.",
+        ]
+        return random.choice(prompts)
+
+    def _fit_for_chat(self, text: str, max_chars: int) -> str:
+        if len(text) <= max_chars:
+            return text
+
+        clipped = text[:max_chars].rstrip()
+        sentence_break = max(clipped.rfind('. '), clipped.rfind('! '), clipped.rfind('? '))
+        if sentence_break >= int(max_chars * 0.6):
+            return clipped[: sentence_break + 1].rstrip()
+
+        last_space = clipped.rfind(' ')
+        if last_space >= int(max_chars * 0.6):
+            return clipped[:last_space].rstrip() + '…'
+
+        return clipped.rstrip() + '…'
+
     async def event_message(self, message) -> None:
         if message.echo:
             return
@@ -289,6 +396,9 @@ class CatVoiceBot(commands.Bot):
 
     async def response_loop(self) -> None:
         next_chat_reply_time = 0.0
+        now = asyncio.get_running_loop().time()
+        next_off_topic_time = now + self._next_off_topic_delay()
+
         while True:
             try:
                 mic_text = self.voice_queue.get_nowait()
@@ -303,9 +413,23 @@ class CatVoiceBot(commands.Bot):
                 reply = await self.generate_reply(f"Streamer voice input: {mic_text}")
                 channel = self.get_channel(self.settings.twitch_channel)
                 if channel:
-                    await channel.send(f"🎙️ {reply[:430]}")
+                    await channel.send(f"🎙️ {self._fit_for_chat(reply, 430)}")
                 self._ensure_speaker_running()
                 self.speaker.speak(reply)
+                continue
+
+            now = asyncio.get_running_loop().time()
+            if now >= next_off_topic_time:
+                off_topic_prompt = self._random_off_topic_prompt()
+                reply = await self.generate_reply(
+                    f"Off-topic spontaneous line for stream: {off_topic_prompt}"
+                )
+                channel = self.get_channel(self.settings.twitch_channel)
+                if channel:
+                    await channel.send(f"🐾 {self._fit_for_chat(reply, 440)}")
+                self._ensure_speaker_running()
+                self.speaker.speak(reply)
+                next_off_topic_time = now + self._next_off_topic_delay()
                 continue
 
             now = asyncio.get_running_loop().time()
@@ -318,13 +442,19 @@ class CatVoiceBot(commands.Bot):
                 reply = await self.generate_reply(f"Twitch chat from {author}: {content}")
                 channel = self.get_channel(self.settings.twitch_channel)
                 if channel:
-                    await channel.send(reply[:450])
+                    await channel.send(self._fit_for_chat(reply, 450))
                 self._ensure_speaker_running()
                 self.speaker.speak(reply)
                 next_chat_reply_time = now + self.settings.chat_response_cooldown_seconds
                 continue
 
             await asyncio.sleep(0.1)
+
+    def _clean_reply_text(self, text: str) -> str:
+        no_asterisk_actions = re.sub(r"\*[^*]+\*", "", text)
+        no_asterisks = no_asterisk_actions.replace("*", "")
+        normalized = " ".join(no_asterisks.split())
+        return normalized.strip()
 
     async def generate_reply(self, content: str) -> str:
         payload = {
@@ -337,7 +467,7 @@ class CatVoiceBot(commands.Bot):
                         "You are CatVoice, a playful cat VTuber co-host. "
                         "Keep replies concise, Twitch-safe, and cat-like. "
                         "Use occasional cat words like meow, purr, paws, or hiss naturally, "
-                        "without overdoing it."
+                        "without overdoing it. Never use roleplay/action formatting like *purrs* or stage directions."
                     ),
                 },
                 {"role": "user", "content": content},
@@ -355,7 +485,8 @@ class CatVoiceBot(commands.Bot):
             response.raise_for_status()
             data = response.json()
             text = data.get("message", {}).get("content", "").strip()
-            return text or "Meow?"
+            cleaned = self._clean_reply_text(text)
+            return cleaned or "Meow?"
         except requests.ReadTimeout:
             print("[ollama error] request timed out while waiting for model response")
             return "Mrrp... that model is taking too long. Try increasing OLLAMA_TIMEOUT_SECONDS or using a smaller model."
