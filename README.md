@@ -5,6 +5,7 @@ This app can:
 - Listen to your microphone
 - Prioritize your microphone when generating responses
 - Reply to Twitch chat on a cooldown so it does not answer every single message
+- Stores chat memory logs (excluding Shoku_Cyn) and uses recent memory for better context
 - Randomly says off-topic cat/stream/get-to-know-you lines every 1–12 minutes
 - Generate playful cat-like responses with a **free local AI model** (Ollama)
 - Speak replies out loud with a more realistic local neural voice by default (optional web TTS mode available)
@@ -99,6 +100,9 @@ Set these in Notepad:
 - `MIC_AMBIENT_ADJUST_SECONDS=2.0`
 - `MIC_LISTEN_TIMEOUT_SECONDS=3.0`
 - `MIC_PHRASE_TIME_LIMIT_SECONDS=12.0`
+- `MEMORY_DIR=memory` (folder where user chat logs are stored)
+- `MEMORY_EXCLUDED_USER=Shoku_Cyn` (this user is excluded from stored memory logs)
+- `MEMORY_MAX_LINES=12` (how many recent memory lines to pass into model context)
 - `USE_WEB_TTS=false` (recommended; uses local neural voice mode)
 - `LOCAL_TTS_VOICE=en-US-AvaNeural` (realistic default voice)
 - `LOCAL_TTS_RATE=+5%`
@@ -170,6 +174,11 @@ ollama list
 ### Too much / too little off-topic chatter
 - Tune `OFFTOPIC_MIN_SECONDS` and `OFFTOPIC_MAX_SECONDS` in `.env`.
 - Lower values = more frequent random lines, higher values = less frequent.
+
+### Memory logs
+- Logs are written per-user inside `MEMORY_DIR` (default `memory/`).
+- `MEMORY_EXCLUDED_USER` is never written to memory logs.
+- Increase `MEMORY_MAX_LINES` if you want more context included in replies.
 
 ### TTS only speaks once / unreliable web voice
 - Keep `USE_WEB_TTS=false` for the most reliable behavior (local neural TTS every message).

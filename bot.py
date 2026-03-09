@@ -6,6 +6,7 @@ import re
 import tempfile
 import threading
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pyttsx3
@@ -43,6 +44,9 @@ class Settings:
     mic_ambient_adjust_seconds: float = 2.0
     mic_listen_timeout_seconds: float = 3.0
     mic_phrase_time_limit_seconds: float = 12.0
+    memory_dir: str = "memory"
+    memory_excluded_user: str = "Shoku_Cyn"
+    memory_max_lines: int = 12
     bot_prefix: str = "!"
 
     @staticmethod
@@ -65,6 +69,7 @@ class Settings:
         mic_ambient_adjust_raw = os.getenv("MIC_AMBIENT_ADJUST_SECONDS", "2.0")
         mic_listen_timeout_raw = os.getenv("MIC_LISTEN_TIMEOUT_SECONDS", "3.0")
         mic_phrase_limit_raw = os.getenv("MIC_PHRASE_TIME_LIMIT_SECONDS", "12.0")
+        memory_max_lines_raw = os.getenv("MEMORY_MAX_LINES", "12")
 
         try:
             timeout_seconds = max(15, int(timeout_raw))
@@ -105,6 +110,11 @@ class Settings:
         except ValueError:
             mic_phrase_time_limit_seconds = 12.0
 
+        try:
+            memory_max_lines = max(3, int(memory_max_lines_raw))
+        except ValueError:
+            memory_max_lines = 12
+
         use_web_tts = os.getenv("USE_WEB_TTS", "false").strip().lower() in {"1", "true", "yes", "on"}
 
         return Settings(
@@ -129,6 +139,9 @@ class Settings:
             mic_ambient_adjust_seconds=mic_ambient_adjust_seconds,
             mic_listen_timeout_seconds=mic_listen_timeout_seconds,
             mic_phrase_time_limit_seconds=mic_phrase_time_limit_seconds,
+            memory_dir=os.getenv("MEMORY_DIR", "memory"),
+            memory_excluded_user=os.getenv("MEMORY_EXCLUDED_USER", "Shoku_Cyn"),
+            memory_max_lines=memory_max_lines,
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -339,6 +352,8 @@ class CatVoiceBot(commands.Bot):
         self.chat_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
         self.voice_listener = VoiceListener(self.voice_queue, settings)
         self.speaker = Speaker(settings)
+        self.memory_dir = Path(self.settings.memory_dir)
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
 
     def _ensure_speaker_running(self) -> None:
         if not self.speaker.is_alive():
@@ -387,11 +402,47 @@ class CatVoiceBot(commands.Bot):
 
         return clipped.rstrip() + '…'
 
+    def _memory_file_for_user(self, username: str) -> Path:
+        safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in username)
+        return self.memory_dir / f"{safe.lower()}.log"
+
+    def _append_user_memory(self, username: str, content: str) -> None:
+        if not content.strip():
+            return
+        if username.casefold() == self.settings.memory_excluded_user.casefold():
+            return
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        line = f"[{timestamp}] {username}: {content.strip()}\n"
+        memory_path = self._memory_file_for_user(username)
+        with memory_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+
+    def _recent_memory_context(self) -> str:
+        lines: list[str] = []
+        for path in sorted(self.memory_dir.glob("*.log")):
+            try:
+                with path.open("r", encoding="utf-8") as f:
+                    user_lines = [ln.strip() for ln in f.readlines() if ln.strip()]
+            except OSError:
+                continue
+
+            if user_lines:
+                lines.extend(user_lines[-2:])
+
+        if not lines:
+            return ""
+
+        selected = lines[-self.settings.memory_max_lines :]
+        return "\n".join(selected)
+
     async def event_message(self, message) -> None:
+
         if message.echo:
             return
         if message.content:
             await self.chat_queue.put((message.author.name, message.content))
+            self._append_user_memory(message.author.name, message.content)
         await self.handle_commands(message)
 
     async def response_loop(self) -> None:
@@ -456,6 +507,19 @@ class CatVoiceBot(commands.Bot):
         normalized = " ".join(no_asterisks.split())
         return normalized.strip()
 
+    def _build_user_prompt(self, content: str) -> str:
+        memory = self._recent_memory_context()
+        if not memory:
+            return content
+
+        return (
+            "Current input:\n"
+            f"{content}\n\n"
+            "Recent memory from other Twitch users (excluding Shoku_Cyn):\n"
+            f"{memory}\n\n"
+            "Use memory only if relevant and keep response concise."
+        )
+
     async def generate_reply(self, content: str) -> str:
         payload = {
             "model": self.settings.ollama_model,
@@ -470,7 +534,7 @@ class CatVoiceBot(commands.Bot):
                         "without overdoing it. Never use roleplay/action formatting like *purrs* or stage directions."
                     ),
                 },
-                {"role": "user", "content": content},
+                {"role": "user", "content": self._build_user_prompt(content)},
             ],
             "options": {"num_predict": 120},
         }
