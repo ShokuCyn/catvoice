@@ -39,7 +39,7 @@ class Settings:
     use_web_tts: bool = False
     local_tts_voice: str = "en-US-GuyNeural"
     local_tts_rate: str = "+10%"
-    local_tts_pitch: str = "+4Hz"
+    local_tts_pitch: str = "+10Hz"
     off_topic_min_seconds: int = 60
     off_topic_max_seconds: int = 720
     mic_ambient_adjust_seconds: float = 2.0
@@ -47,7 +47,7 @@ class Settings:
     mic_phrase_time_limit_seconds: float = 12.0
     memory_dir: str = "memory"
     memory_excluded_user: str = ""
-    memory_max_lines: int = 12
+    memory_max_lines: int = 0
     bot_prefix: str = "!"
 
     @staticmethod
@@ -70,7 +70,7 @@ class Settings:
         mic_ambient_adjust_raw = os.getenv("MIC_AMBIENT_ADJUST_SECONDS", "2.0")
         mic_listen_timeout_raw = os.getenv("MIC_LISTEN_TIMEOUT_SECONDS", "3.0")
         mic_phrase_limit_raw = os.getenv("MIC_PHRASE_TIME_LIMIT_SECONDS", "12.0")
-        memory_max_lines_raw = os.getenv("MEMORY_MAX_LINES", "12")
+        memory_max_lines_raw = os.getenv("MEMORY_MAX_LINES", "0")
 
         try:
             timeout_seconds = max(15, int(timeout_raw))
@@ -112,9 +112,9 @@ class Settings:
             mic_phrase_time_limit_seconds = 12.0
 
         try:
-            memory_max_lines = max(3, int(memory_max_lines_raw))
+            memory_max_lines = int(memory_max_lines_raw)
         except ValueError:
-            memory_max_lines = 12
+            memory_max_lines = 0
 
         use_web_tts = os.getenv("USE_WEB_TTS", "false").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -135,7 +135,7 @@ class Settings:
             use_web_tts=use_web_tts,
             local_tts_voice=os.getenv("LOCAL_TTS_VOICE", "en-US-GuyNeural"),
             local_tts_rate=os.getenv("LOCAL_TTS_RATE", "+10%"),
-            local_tts_pitch=os.getenv("LOCAL_TTS_PITCH", "+4Hz"),
+            local_tts_pitch=os.getenv("LOCAL_TTS_PITCH", "+10Hz"),
             off_topic_min_seconds=off_topic_min_seconds,
             off_topic_max_seconds=off_topic_max_seconds,
             mic_ambient_adjust_seconds=mic_ambient_adjust_seconds,
@@ -436,16 +436,18 @@ class CatVoiceBot(commands.Bot):
         if not lines:
             return ""
 
-        selected = lines[-self.settings.memory_max_lines :]
-        return "\n".join(selected)
+        if self.settings.memory_max_lines > 0:
+            lines = lines[-self.settings.memory_max_lines :]
+        return "\n".join(lines)
 
     async def event_message(self, message) -> None:
 
         if message.echo:
             return
-        if message.content:
-            await self.chat_queue.put((message.author.name, message.content))
-            self._append_user_memory(message.author.name, message.content)
+        content = message.content or ""
+        self._append_user_memory(message.author.name, content)
+        if content:
+            await self.chat_queue.put((message.author.name, content))
         await self.handle_commands(message)
 
     async def response_loop(self) -> None:

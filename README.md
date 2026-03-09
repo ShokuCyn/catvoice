@@ -102,11 +102,11 @@ Set these in Notepad:
 - `MIC_PHRASE_TIME_LIMIT_SECONDS=12.0`
 - `MEMORY_DIR=memory` (folder where user chat logs are stored)
 - `MEMORY_EXCLUDED_USER=` (leave blank to remember everyone, including Shoku_Cyn)
-- `MEMORY_MAX_LINES=12` (how many recent memory lines to pass into model context)
+- `MEMORY_MAX_LINES=0` (0 means unlimited memory context; set >0 to limit)
 - `USE_WEB_TTS=false` (recommended; uses local neural voice mode)
 - `LOCAL_TTS_VOICE=en-US-GuyNeural` (realistic male default voice)
 - `LOCAL_TTS_RATE=+10%`
-- `LOCAL_TTS_PITCH=+4Hz` (slightly higher-pitched male voice)
+- `LOCAL_TTS_PITCH=+10Hz` (higher-pitched male voice)
 - `STREAMLABS_TTS_URL=https://streamlabs.com/polly/speak`
 - `STREAMLABS_VOICE=Joanna` (used when `USE_WEB_TTS=true`)
 - `STREAMLABS_TTS_TIMEOUT_SECONDS=30`
@@ -179,7 +179,7 @@ ollama list
 ### Memory logs
 - Logs are written per-user inside `MEMORY_DIR` (default `memory/`).
 - If `MEMORY_EXCLUDED_USER` is blank, all users (including Shoku_Cyn) are remembered.
-- Increase `MEMORY_MAX_LINES` if you want more context included in replies.
+- `MEMORY_MAX_LINES=0` means no cap; set a positive number if you want to limit context size.
 
 ### TTS only speaks once / unreliable web voice
 - Keep `USE_WEB_TTS=false` for the most reliable behavior (local neural TTS every message).
