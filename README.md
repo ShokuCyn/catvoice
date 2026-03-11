@@ -103,6 +103,7 @@ Set these in Notepad:
 - `MEMORY_DIR=memory` (folder where user chat logs are stored)
 - `MEMORY_EXCLUDED_USER=` (leave blank to remember everyone, including Shoku_Cyn)
 - `MEMORY_MAX_LINES=0` (0 means unlimited memory context; set >0 to limit)
+- `CONVERSATION_RECENT_LINES=80` (recent lines from `memory/.gitkeep` used for conversation carry-over)
 - `USE_WEB_TTS=false` (recommended; uses local neural voice mode)
 - `LOCAL_TTS_VOICE=en-US-GuyNeural` (realistic male default voice)
 - `LOCAL_TTS_RATE=+20%`
@@ -180,6 +181,7 @@ ollama list
 - Logs are written per-user inside `MEMORY_DIR` (default `memory/`) and to `memory/.gitkeep` as a global timeline.
 - If `MEMORY_EXCLUDED_USER` is blank, all users (including Shoku_Cyn) are remembered.
 - `MEMORY_MAX_LINES=0` means no cap; set a positive number if you want to limit context size.
+- `CONVERSATION_RECENT_LINES` controls how much recent timeline is used to continue conversations.
 - Bot replies are also logged and reused as context in future replies.
 
 ### TTS only speaks once / unreliable web voice

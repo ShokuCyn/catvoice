@@ -38,7 +38,7 @@ class Settings:
     streamelements_voice: str = "Joanna"
     use_web_tts: bool = False
     local_tts_voice: str = "en-US-GuyNeural"
-    local_tts_rate: str = "+25%"
+    local_tts_rate: str = "+20%"
     local_tts_pitch: str = "+10Hz"
     off_topic_min_seconds: int = 60
     off_topic_max_seconds: int = 720
@@ -48,6 +48,7 @@ class Settings:
     memory_dir: str = "memory"
     memory_excluded_user: str = ""
     memory_max_lines: int = 0
+    conversation_recent_lines: int = 80
     bot_prefix: str = "!"
 
     @staticmethod
@@ -71,6 +72,7 @@ class Settings:
         mic_listen_timeout_raw = os.getenv("MIC_LISTEN_TIMEOUT_SECONDS", "3.0")
         mic_phrase_limit_raw = os.getenv("MIC_PHRASE_TIME_LIMIT_SECONDS", "12.0")
         memory_max_lines_raw = os.getenv("MEMORY_MAX_LINES", "0")
+        conversation_recent_lines_raw = os.getenv("CONVERSATION_RECENT_LINES", "80")
 
         try:
             timeout_seconds = max(15, int(timeout_raw))
@@ -116,6 +118,11 @@ class Settings:
         except ValueError:
             memory_max_lines = 0
 
+        try:
+            conversation_recent_lines = max(10, int(conversation_recent_lines_raw))
+        except ValueError:
+            conversation_recent_lines = 80
+
         use_web_tts = os.getenv("USE_WEB_TTS", "false").strip().lower() in {"1", "true", "yes", "on"}
 
         return Settings(
@@ -144,6 +151,7 @@ class Settings:
             memory_dir=os.getenv("MEMORY_DIR", "memory"),
             memory_excluded_user=os.getenv("MEMORY_EXCLUDED_USER", "").strip(),
             memory_max_lines=memory_max_lines,
+            conversation_recent_lines=conversation_recent_lines,
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -427,15 +435,17 @@ class TiuCynBot(commands.Bot):
     def _recent_memory_context(self) -> str:
         lines: list[str] = []
 
+        # Primary source: timestamped conversation timeline (users + bot).
         global_path = self.memory_dir / ".gitkeep"
         if global_path.exists():
             try:
                 with global_path.open("r", encoding="utf-8") as f:
                     global_lines = [ln.strip() for ln in f.readlines() if ln.strip()]
-                lines.extend(global_lines[-40:])
+                lines.extend(global_lines[-self.settings.conversation_recent_lines :])
             except OSError:
                 pass
 
+        # Secondary source: per-user logs for added recall.
         for path in sorted(self.memory_dir.glob("*.log")):
             try:
                 with path.open("r", encoding="utf-8") as f:
@@ -558,6 +568,7 @@ class TiuCynBot(commands.Bot):
             f"{content}\n\n"
             "Recent memory log (users + bot):\n"
             f"{memory}\n\n"
+            "Continue the conversation naturally using recent log history when relevant. "
             "Use memory only if relevant and keep response concise."
         )
 
