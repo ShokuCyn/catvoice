@@ -49,6 +49,7 @@ class Settings:
     memory_excluded_user: str = ""
     memory_max_lines: int = 0
     conversation_recent_lines: int = 80
+    conversation_log_file: str = "conversation.log"
     bot_prefix: str = "!"
 
     @staticmethod
@@ -152,6 +153,7 @@ class Settings:
             memory_excluded_user=os.getenv("MEMORY_EXCLUDED_USER", "").strip(),
             memory_max_lines=memory_max_lines,
             conversation_recent_lines=conversation_recent_lines,
+            conversation_log_file=os.getenv("CONVERSATION_LOG_FILE", "conversation.log"),
             bot_prefix=os.getenv("BOT_PREFIX", "!"),
         )
 
@@ -369,6 +371,7 @@ class TiuCynBot(commands.Bot):
         self.speaker = Speaker(settings)
         self.memory_dir = Path(self.settings.memory_dir)
         self.memory_dir.mkdir(parents=True, exist_ok=True)
+        self.conversation_log_path = self.memory_dir / self.settings.conversation_log_file
 
     def _ensure_speaker_running(self) -> None:
         if not self.speaker.is_alive():
@@ -420,14 +423,22 @@ class TiuCynBot(commands.Bot):
         safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in username)
         return self.memory_dir / f"{safe.lower()}.log"
 
+    def _normalize_log_content(self, content: str) -> str:
+        cleaned = content.strip()
+        return cleaned if cleaned else "<empty message>"
+
+    def _append_conversation_log(self, speaker: str, content: str) -> None:
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+        line = f"[{timestamp}] {speaker}: {self._normalize_log_content(content)}\n"
+        with self.conversation_log_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+
     def _append_user_memory(self, username: str, content: str) -> None:
-        if not content.strip():
-            return
         if self.settings.memory_excluded_user and username.casefold() == self.settings.memory_excluded_user.casefold():
             return
 
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
-        line = f"[{timestamp}] {username}: {content.strip()}\n"
+        line = f"[{timestamp}] {username}: {self._normalize_log_content(content)}\n"
         memory_path = self._memory_file_for_user(username)
         with memory_path.open("a", encoding="utf-8") as f:
             f.write(line)
@@ -435,7 +446,16 @@ class TiuCynBot(commands.Bot):
     def _recent_memory_context(self) -> str:
         lines: list[str] = []
 
-        # Primary source: timestamped conversation timeline (users + bot).
+        # Primary source: dedicated timestamped conversation log (users + bot).
+        if self.conversation_log_path.exists():
+            try:
+                with self.conversation_log_path.open("r", encoding="utf-8") as f:
+                    convo_lines = [ln.strip() for ln in f.readlines() if ln.strip()]
+                lines.extend(convo_lines[-self.settings.conversation_recent_lines :])
+            except OSError:
+                pass
+
+        # Secondary source: global timeline fallback (users + bot).
         global_path = self.memory_dir / ".gitkeep"
         if global_path.exists():
             try:
@@ -465,19 +485,19 @@ class TiuCynBot(commands.Bot):
 
     def _append_global_memory(self, username: str, content: str) -> None:
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
-        line = f"[{timestamp}] {username}: {content.strip()}\n"
+        line = f"[{timestamp}] {username}: {self._normalize_log_content(content)}\n"
         global_path = self.memory_dir / ".gitkeep"
         with global_path.open("a", encoding="utf-8") as f:
             f.write(line)
+        self._append_conversation_log(username, content)
 
     def _append_bot_memory(self, content: str) -> None:
-        if not content.strip():
-            return
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
-        line = f"[{timestamp}] Tiu_Cyn: {content.strip()}\n"
+        line = f"[{timestamp}] Tiu_Cyn: {self._normalize_log_content(content)}\n"
         global_path = self.memory_dir / ".gitkeep"
         with global_path.open("a", encoding="utf-8") as f:
             f.write(line)
+        self._append_conversation_log("Tiu_Cyn", content)
 
     def _log_bot_reply(self, reply: str) -> None:
         self._append_bot_memory(reply)

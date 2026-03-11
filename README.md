@@ -103,7 +103,8 @@ Set these in Notepad:
 - `MEMORY_DIR=memory` (folder where user chat logs are stored)
 - `MEMORY_EXCLUDED_USER=` (leave blank to remember everyone, including Shoku_Cyn)
 - `MEMORY_MAX_LINES=0` (0 means unlimited memory context; set >0 to limit)
-- `CONVERSATION_RECENT_LINES=80` (recent lines from `memory/.gitkeep` used for conversation carry-over)
+- `CONVERSATION_RECENT_LINES=80` (recent lines used for conversation carry-over)
+- `CONVERSATION_LOG_FILE=conversation.log` (dedicated timestamped conversation log inside `MEMORY_DIR`)
 - `USE_WEB_TTS=false` (recommended; uses local neural voice mode)
 - `LOCAL_TTS_VOICE=en-US-GuyNeural` (realistic male default voice)
 - `LOCAL_TTS_RATE=+20%`
@@ -178,7 +179,7 @@ ollama list
 - Lower values = more frequent random lines, higher values = less frequent.
 
 ### Memory logs
-- Logs are written per-user inside `MEMORY_DIR` (default `memory/`) and to `memory/.gitkeep` as a global timeline.
+- Logs are written per-user inside `MEMORY_DIR` (default `memory/`), to `memory/.gitkeep` as a global timeline, and to `memory/conversation.log` as a dedicated timestamped conversation log.
 - If `MEMORY_EXCLUDED_USER` is blank, all users (including Shoku_Cyn) are remembered.
 - `MEMORY_MAX_LINES=0` means no cap; set a positive number if you want to limit context size.
 - `CONVERSATION_RECENT_LINES` controls how much recent timeline is used to continue conversations.
